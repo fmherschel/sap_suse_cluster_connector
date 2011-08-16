@@ -1,6 +1,27 @@
 #
 #
-# - using crm_resource instead of crm, because of bugzilla Bug 711960 - Command line interface crm fails with Traceback when called from a deamon via system()
+# BUILD
 #
-# - test system at this moment is ls3198 / ls3199
-# #
+#    make all
+#    make test
+#
+# INSTALL
+#
+#    Copy the library libsapha.so.1.0.1 and the symlink libsapha.so.1 to the exe directory where 
+#    also sapstartsrv is located (you could also use an other directory but than you need
+#    to change the configuration in the next step).
+#    Example: scp libsapha.so.1* root@ls3198:/usr/sap/NA0/ASCS00/exe
+#
+#    Change the Profile read by the sapstartsrv and add the parameter service/halib
+#    service/halib = $(DIR_EXECUTABLE)/libsapha.so
+#    Example: START_ASCS00_sapna0as:service/halib = $(DIR_EXECUTABLE)/libsapha.so
+#
+#    Force sapstartsrv to be restarted (i.e. by killing the sapstartsrv process)
+#
+# IMPLEMENTATION REMARKS
+#
+# - using crm_resource instead of crm, because of bugzilla: 
+#   Bug 711960 - Command line interface crm fails with Traceback when called from a deamon via system()
+# - test hardware at this moment is ls3198 / ls3199
+# - test SAP system NA0 with an updated sapstartsrv, because sap kernel was to old
+# 
