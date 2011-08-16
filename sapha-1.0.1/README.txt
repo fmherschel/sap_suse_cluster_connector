@@ -18,7 +18,7 @@
 #
 #    Force sapstartsrv to be restarted (i.e. by killing the sapstartsrv process)
 #
-# IMPLEMENTATION REMARKS
+# IMPLEMENTATION REMARKS / TODO :x
 #
 # - using crm_resource instead of crm, because of bugzilla: 
 #   Bug 711960 - Command line interface crm fails with Traceback when called from a deamon via system()
