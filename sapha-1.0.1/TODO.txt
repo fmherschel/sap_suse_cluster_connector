@@ -1,0 +1,2 @@
+
+01: check, if we can detect active resource operations with crm_resource -O -r <resource>
