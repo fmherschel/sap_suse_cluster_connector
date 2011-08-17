@@ -1,0 +1,95 @@
+node ls3198 \
+	attributes standby="off"
+node ls3199 \
+	attributes standby="on"
+primitive ipmitest_ls3198 stonith:external/ipmi \
+	meta target-role="started" \
+	operations $id="ipmitest_ls3198-operations" \
+	op monitor interval="15" timeout="15" start-delay="15" \
+	params hostname="ls3198" ipaddr="ls3198r" userid="admin" passwd="admin" interface="lan"
+primitive ipmitest_ls3199 stonith:external/ipmi \
+	meta target-role="started" \
+	operations $id="ipmitest_ls3199-operations" \
+	op monitor interval="15" timeout="15" start-delay="15" \
+	params hostname="ls3199" ipaddr="ls3199r" userid="admin" passwd="admin" interface="lan"
+primitive ipmitest_ls3199n stonith:external/ipmi \
+	params hostname="ls3199" ipaddr="ls3199r" userid="admin" passwd="admin" interface="lan"
+primitive pingd0 ocf:heartbeat:pingd \
+	meta target-role="started" \
+	params host_list="10.20.88.1" multiplier="100" \
+	op monitor interval="10" timeout="20" start-delay="0"
+primitive rsc_FS_NA0_sapdb ocf:heartbeat:Filesystem \
+	params device="/dev/sapvg/sapdb" directory="/sapdb" fstype="ext3" options="noatime,defaults" \
+	op stop interval="0" timeout="300s" \
+	op monitor interval="30s" timeout="60s"
+primitive rsc_FS_NA0_sapmnt ocf:heartbeat:Filesystem \
+	params device="/dev/sapvg/sapmnt" directory="/sapmnt" fstype="ext3" options="noatime,defaults" \
+	op stop interval="0" timeout="300s" \
+	op monitor interval="30s" timeout="60s"
+primitive rsc_FS_NA0_usrsap ocf:heartbeat:Filesystem \
+	params device="/dev/sapvg/usrsap" directory="/usr/sap" fstype="ext3" options="noatime,defaults" \
+	op stop interval="0" timeout="300s" \
+	op monitor interval="30s" timeout="60s"
+primitive rsc_IP_NA0_sapna0as ocf:heartbeat:IPaddr2 \
+	params ip="10.20.91.20" \
+	op monitor interval="5s" timeout="20s"
+primitive rsc_IP_NA0_sapna0ci ocf:heartbeat:IPaddr2 \
+	params ip="10.20.91.22" \
+	op monitor interval="5s" timeout="20s"
+primitive rsc_IP_NA0_sapna0db ocf:heartbeat:IPaddr2 \
+	params ip="10.20.91.21" \
+	op monitor interval="5s" timeout="20s"
+primitive rsc_LVM_NA0_sapvg ocf:heartbeat:LVM \
+	params volgrpname="sapvg" \
+	op monitor interval="120s" timeout="60s" \
+	op stop interval="0" timeout="30s" on_fail="fence"
+primitive rsc_RAID1_NA0_md0 ocf:heartbeat:Raid1 \
+	params raidconf="/clusterconf/NA0/mdadm.conf" raiddev="/dev/md0" \
+	op monitor interval="120s" timeout="60s" on_fail="fence"
+primitive rsc_RAID1_NA0_md1 ocf:heartbeat:Raid1 \
+	params raidconf="/clusterconf/NA0/mdadm.conf" raiddev="/dev/md1" \
+	op monitor interval="120s" timeout="60s" on_fail="fence"
+primitive rsc_RAID1_NA0_md2 ocf:heartbeat:Raid1 \
+	params raidconf="/clusterconf/NA0/mdadm.conf" raiddev="/dev/md2" \
+	op monitor interval="120s" timeout="60s" on_fail="fence"
+primitive rsc_RAID1_NA0_md3 ocf:heartbeat:Raid1 \
+	params raidconf="/clusterconf/NA0/mdadm.conf" raiddev="/dev/md3" \
+	op monitor interval="120s" timeout="60s" on_fail="fence"
+primitive rsc_SAPDatabase_NA0 ocf:heartbeat:SAPDatabase \
+	params SID="NA0" DBTYPE="ADA" \
+	op monitor interval="120s" timeout="60s" start_delay="180s" \
+	op start interval="0" timeout="120s" \
+	op stop interval="0" timeout="180s"
+primitive rsc_SAPInstance_NA0_ASCS00_sapna0as ocf:heartbeat:SAPInstance \
+	params InstanceName="NA0_ASCS00_sapna0as" AUTOMATIC_RECOVER="true" START_PROFILE="/usr/sap/NA0/SYS/profile/START_ASCS00_sapna0as" \
+	op monitor interval="120s" timeout="60s" start_delay="120s" \
+	op start interval="0" timeout="120s" \
+	op stop interval="0" timeout="180s" on_fail="block" \
+	meta target-role="Stopped"
+primitive rsc_SAPInstance_NA0_DVEBMGS01_sapna0ci ocf:heartbeat:SAPInstance \
+	params InsTANceName="NA0_DVEBMGS01_sapna0ci" AUTOMATIC_RECOVER="true" START_PROFILE="/usr/sap/NA0/SYS/profile/START_DVEBMGS01_sapna0ci" \
+	op monitor interval="120s" timeout="60s" start_delay="240s" \
+	op start interval="0" timeout="240s" \
+	op stop interval="0" timeout="240s" on_fail="block" \
+	meta is-managed="true" target-role="Stopped"
+primitive rsc_sfex_1_1_NA0 ocf:heartbeat:sfex \
+	params device="/dev/mapper/DGC_005_part1" index="1" monitor_interval="5s" collision_timeout="10s" lock_timeout="20s" \
+	op monitor interval="5s" timeout="15s" start_delay="10s"
+group grp_sap_NA0 rsc_sfex_1_1_NA0 rsc_IP_NA0_sapna0ci rsc_IP_NA0_sapna0db rsc_IP_NA0_sapna0as rsc_RAID1_NA0_md0 rsc_RAID1_NA0_md1 rsc_RAID1_NA0_md2 rsc_RAID1_NA0_md3 rsc_LVM_NA0_sapvg rsc_FS_NA0_usrsap rsc_FS_NA0_sapmnt rsc_FS_NA0_sapdb rsc_SAPDatabase_NA0 rsc_SAPInstance_NA0_ASCS00_sapna0as rsc_SAPInstance_NA0_DVEBMGS01_sapna0ci \
+	meta target-role="Started"
+clone clone_pingd0 pingd0 \
+	meta globally-unique="false" target-role="started" \
+	params pingd-dampen="5s" pingd-multiplier="100" ping-hosts="10.20.88.1"
+location lala3 ipmitest_ls3199n -inf: ls3199
+location loc_impitest_ls3199 ipmitest_ls3199 -inf: ls3199
+location loc_ipmitest_ls3198 ipmitest_ls3198 -inf: ls3198
+property $id="cib-bootstrap-options" \
+	dc-version="1.1.5-5bd2b9154d7d9f86d7f56fe0a74072a5a6590c60" \
+	cluster-infrastructure="openais" \
+	expected-quorum-votes="2" \
+	last-lrm-refresh="1313503798"
+xml <meta_attributes id="op-options"> \
+	<nvpair id="op-options-record-pending" name="record-pending" value="true"/> \
+</meta_attributes>
+op_defaults $id="op_defaults-options" \
+	record-pending="false"
