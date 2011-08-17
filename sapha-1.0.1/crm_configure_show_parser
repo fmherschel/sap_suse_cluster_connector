@@ -13,6 +13,12 @@
 # 
 # TODO: we might also need to check param  ERS_InstanceName
 #
+use Getopt::Long;
+use strict;
+
+my $cmdoutput="";
+my $result = GetOptions ("out=s" =>  \$cmdoutput,
+		);
 my ($sclass, $sprovider, $sra, $sparam ) = ("ocf", "heartbeat", "SAPInstance", "InstanceName");
 my ($ssystem, $snumber ) = @ARGV;
 
@@ -22,7 +28,7 @@ my ($fclass, $fprovider, $fra, $fname, $fgname) = ("","","","","");
 my $found = 0;     # found a primitive matching criteria
 my $foundRes = 0; # found correct Resource
 
-open CRMOUT, "crm configure show|" || die "could not open crm output";
+open CRMOUT, "crm configure show 2>/dev/null |" || die "could not open crm output";
 while (<CRMOUT>) {
 	chomp;
 	my $line = $_;
@@ -55,7 +61,13 @@ while (<CRMOUT>) {
 	}
 }	
 if ($foundRes==1) {
-	printf "%s:%s:%s\n", $fname, $fgname, "-";
+	if ($cmdoutput eq "") {
+		printf "%s:%s:%s\n", $fname, $fgname, "-";
+	} else {
+		open OUT, ">" . $cmdoutput;
+		printf OUT "%s:%s:%s:%s:%s\n", $ssystem, $snumber, $fname, $fgname, "-";
+		close OUT;
+	}
 }
 
 # TODO: scores and node names sorted by scores -> use ptest
