@@ -1,0 +1,66 @@
+#!/usr/bin/perl
+
+# primitive rsc_SAPInstance_NA0_ASCS00_sapna0as ocf:heartbeat:SAPInstance \
+#        params InstanceName="NA0_ASCS00_sapna0as" AUTOMATIC_RECOVER="true" START_PROFILE="/usr/sap/NA0/SYS/profile/START_ASCS00_sapna0as" \
+#        op monitor interval="120s" timeout="60s" start_delay="120s" \
+#        op start interval="0" timeout="120s" \
+#        op stop interval="0" timeout="180s" on_fail="block" \
+#        meta target-role="Stopped"
+#
+# crm_configure_show_parser SID NUMBER
+#
+# search values
+# 
+# TODO: we might also need to check param  ERS_InstanceName
+#
+my ($sclass, $sprovider, $sra, $sparam ) = ("ocf", "heartbeat", "SAPInstance", "InstanceName");
+my ($ssystem, $snumber ) = @ARGV;
+
+# found values
+
+my ($fclass, $fprovider, $fra, $fname, $fgname) = ("","","","","");
+my $found = 0;     # found a primitive matching criteria
+my $foundRes = 0; # found correct Resource
+
+open CRMOUT, "crm configure show|" || die "could not open crm output";
+while (<CRMOUT>) {
+	chomp;
+	my $line = $_;
+	if ( ($foundRes==0) && ( $line =~ /^primitive ([a-zA-Z0-9_]+) ([a-zA-Z0-9_]+):([a-zA-Z0-9_]+):([a-zA-Z0-9_]+)/ )) {
+		#
+		# found begin of primitive definition
+		#
+		($fclass, $fprovider, $fra, $fname) = ($2, $3, $4, $1);
+		if (( $fclass eq $sclass ) && ( $fprovider eq $sprovider ) && ( $fra eq $sra ) ) {
+			#
+			# we have found a primitive of the correct type
+			#
+			$found = 1;
+		} else {
+			$found = 0;
+		}
+	} elsif ( ($found==1) && ( $line =~ /^\s+params.*($sparam)="([^"]+)"/ )) {
+		my ($paramName, $paramValue) = ($1, $2);
+		#
+		# InstanceName should look like <SID>_<TYPE><NUMBER>_<VIRTHOST>
+		#
+		if ( $paramValue =~ /^${ssystem}_[a-zA-Z0-9]+${snumber}_[a-zA-Z0-9]+$/ ) {
+			$foundRes=1;
+		}
+	 } elsif ( ($foundRes==1) && ( $line =~ /^group ([a-zA-Z0-9_]+).*($fname)/ )) {
+		# 
+		# found resource is member of a group
+		#
+		$fgname = $1;
+	}
+}	
+if ($foundRes==1) {
+	printf "%s:%s:%s\n", $fname, $fgname, "-";
+}
+
+# TODO: scores and node names sorted by scores -> use ptest
+#
+#ls3198:/usr/lib/ocf/resource.d/heartbeat # ptest -Ls | grep ls3199 | egrep '(rsc_SAPInstance_NA0_ASCS00_sapna0as|grp_sap_NA0)'
+#group_color: grp_sap_NA0 allocation score on ls3199: 0
+#group_color: rsc_SAPInstance_NA0_ASCS00_sapna0as allocation score on ls3199: 0
+#native_color: rsc_SAPInstance_NA0_ASCS00_sapna0as allocation score on ls3199: -INFINITY
