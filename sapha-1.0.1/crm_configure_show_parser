@@ -13,14 +13,23 @@
 # 
 # TODO: we might also need to check param  ERS_InstanceName
 #
+#use IO::Handle;
 use Getopt::Long;
 use strict;
 
-my $cmdoutput="";
-my $result = GetOptions ("out=s" =>  \$cmdoutput,
-		);
+my $checkit;
+my $result = GetOptions ("check" => \$checkit,
+                        );
+
 my ($sclass, $sprovider, $sra, $sparam ) = ("ocf", "heartbeat", "SAPInstance", "InstanceName");
-my ($ssystem, $snumber ) = @ARGV;
+my ($cmdoutput, $ssystem, $snumber ) = @ARGV;
+
+$ENV{'PATH'} = $ENV{'PATH'} . ":/usr/sbin:/sbin";
+open DEBUG, ">>/tmp/TEST.pl.debug" || die "could not open debug";
+printf DEBUG "cmdoutput, ssystem, snumber %s, %s, %s\n", $cmdoutput, $ssystem, $snumber ;
+printf "ARGV: %s", join(" ", @ARGV);
+*STDOUT=*DEBUG;
+printf "Hello world\n";
 
 # found values
 
@@ -60,6 +69,7 @@ while (<CRMOUT>) {
 		$fgname = $1;
 	}
 }	
+
 if ($foundRes==1) {
 	if ($cmdoutput eq "") {
 		printf "%s:%s:%s\n", $fname, $fgname, "-";
