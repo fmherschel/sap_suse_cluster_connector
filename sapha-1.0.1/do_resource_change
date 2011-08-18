@@ -1,4 +1,28 @@
 #!/bin/bash
+#
+#############################################################################
+#
+# do_resource_change
+#
+# request an operation or other change of a specified cluster resource
+#
+#############################################################################
+#
+# Author: Fabian Herschel
+#
+# (c) SUSE Linux Products GmbH
+#
+# License: GPL v2
+#
+#############################################################################
+#
+# Parameters: <resource> <action> [<node>]
+#
+# <action> could be are:
+#       stop 
+#       start
+#       migrate ( with optinal destination node )
+#
 
 exec 1>>/dev/shm/sapha.change
 exec 2>&1
@@ -8,7 +32,7 @@ act=$2
 node=$3
 rc=1
 
-PATH=$PATH:/usr/sbin 
+PATH=$PATH:/usr/sbin:/sbin
 case "$act" in
 	stop )
 		crm resource stop $rsc	
