@@ -1,2 +1,2 @@
-
+00: check how to have the fhexperimental branch also on the server (for backup)
 01: check, if we can detect active resource operations with crm_resource -O -r <resource>
