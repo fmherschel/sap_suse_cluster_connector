@@ -1,0 +1,125 @@
+#!/usr/bin/perl
+
+use Getopt::Long;
+use strict;
+
+sub usage() {
+printf "$0 cmd options
+      cmd:  h | help
+      cpa | check_pending_action --res RES --act ACT --sta STA
+      lsr | list_sap_resources --out FILE --sid SID --ino INO
+      fra | fire_resource_action --res RES --act ACT  [ --nod NODE ]
+      lsn | list_sap_nodes  --out FILE --res RES
+";
+}
+
+sub paramproblem() {
+	usage();
+	exit(2);
+}
+
+sub checkavail(@) {
+	my @CHECK = @_;
+	my $chk;
+	my $rc=1;
+	for $chk ( @CHECK ) {
+		if ( ! ( defined ( $chk )))  {
+			$rc=0;
+		}
+	}
+	return $rc;
+}
+
+sub fire_resource_action {
+	my ($res, $act, $nod) = @_;
+	my rc=0;
+	if ( $act eq "stop" ) {
+		system("crm","resource",$act,$rsc) || rc=1;
+	} elsif ( $act eq "start" ) {
+		system("crm","resource",$act,$rsc) || rc=1;
+	} elsif ( $act eq "migrate" ) {
+		if ( defined $nod ) {
+			system("crm","resource",$act,$rsc,$nod) || rc=1;
+		}
+	} 
+	return $rc;
+}
+
+sub check_pending_action {
+	my ($res, $act, $sta) = @_;
+	my rc=0;
+	# TODO: implement bash like 
+	#    
+	#    crm_resource -O -r $rsc | grep "${rsc}_${act}_.*: ${sta}"  && rc=0
+	return $rc;
+}
+
+sub list_sap_resources {  # --out file --sid sid --ino ino
+	my ($out, $sid, $ino) = @_;
+	my rc=0;
+	# TODO: implement action
+	return $rc;
+} 
+
+sub list_sap_nodes { # --out file --res RES
+	my ($out, $res) = @_;
+	my rc=0;
+	# TODO: implement action
+	return $rc;
+}
+
+
+my ($cmd) = @ARGV; shift;
+my $result=2;
+my ($sid, $ino, $act, $out, $res, $nod, $sta);
+my $return_code=2;
+$ENV{'PATH'} = $ENV{'PATH'} . ":/usr/sbin:/sbin";
+
+if ( $cmd eq "cpa" ) {
+	$result = GetOptions ("res=s" => \$res,    
+	                   "act=s" => \$act,
+	                   "sta=s" => \$sta,
+		 ) &&
+	checkavail(($res, $sta, $act)) || paramproblem();
+	# TODO: action
+
+
+ } elsif ( $cmd eq "lsr" ) {
+	$result = GetOptions ("sid=s" => \$sid,    
+	                   "ino=s" => \$ino,
+	                   "out=s" => \$out,
+		 ) &&
+	checkavail(($sid, $ino, $out)) || paramproblem();
+	# TODO: action
+	
+
+ } elsif ( $cmd eq "fra" ) {
+	 #
+	 # remark: don't check if nod is set - as it is optional
+	 #
+	$result = GetOptions ("res=s" => \$res,    
+	                   "act=s" => \$act,
+	                   "nod=s" => \$nod,
+		 ) && 
+	checkavail(($res, $act)) || paramproblem();
+	fire_resource_action($res, $act; $nod);
+
+ } elsif ( $cmd eq "lsn" ) {
+	$result = GetOptions ("out=s" => \$out,    
+	                   "res=s" => \$res,
+		 ) &&
+	checkavail(($res, $out)) || paramproblem();
+	# TODO: action
+
+ } elsif ( $cmd eq "h" ) {
+	 usage();
+	 exit 0;
+
+ } else  {
+	 #
+	 # remark: found no or unknown cmd
+	 #
+ 	paramproblem()
+ }
+	
+exit $return_code
