@@ -49,10 +49,23 @@ sub fire_resource_action {
 sub check_pending_action {
 	my ($res, $act, $sta) = @_;
 	my $rc=0;
-	# TODO: implement bash like 
-	$rc=2;
+	my $found=0;
+	#
+	# rc:
+	#     0: found
+	#     1: not found
+        #     2: internal error
+	$rc=1;
 	#    
 	#    crm_resource -O -r $rsc | grep "${rsc}_${act}_.*: ${sta}"  && rc=0
+	open CRMOUT, "crm_resource -O -r $res 2>/dev/null |" or $rc=2;
+	while (<CRMOUT>) {
+		chomp;
+		my $line = $_;
+		if ( $line =~ /${res}_${act}_.*: ${sta}/ ) {
+			$rc=0;
+		}
+	}
 	return $rc;
 }
 
@@ -61,9 +74,110 @@ sub list_sap_resources {
 	# --out file --sid sid --ino ino
 	#
 	my ($out, $sid, $ino) = @_;
-	my $rc=0;
+	my $rc=2;
 	# TODO: implement action
-	$rc=2;
+	#
+	# typical crm syntax/output:
+	# primitive rsc_SAPInstance_NA0_ASCS00_sapna0as ocf:heartbeat:SAPInstance \
+	#        params InstanceName="NA0_ASCS00_sapna0as" AUTOMATIC_RECOVER="true" START_PROFILE="/usr/sap/NA0/SYS/profile/START_ASCS00_sapna0as" \
+	#        op monitor interval="120s" timeout="60s" start_delay="120s" \
+	#        op start interval="0" timeout="120s" \
+	#        op stop interval="0" timeout="180s" on_fail="block" \
+	#        meta target-role="Stopped"
+	#
+	# TODO: we might also need to check param  ERS_InstanceName
+	#
+	#use IO::Handle;
+
+	my ($sclass, $sprovider, $sra, $sparam, $sparam2 ) = ("ocf", "heartbeat", "SAPInstance", "InstanceName", "ERS_InstanceName");
+	#my ($out, $sid, $ino ) = @ARGV;
+
+	$ENV{'PATH'} = $ENV{'PATH'} . ":/usr/sbin:/sbin";
+	open DEBUG, ">>/tmp/TEST.pl.debug" || die "could not open debug";
+	printf DEBUG "(out, sid, ino) = ( %s, %s, %s)\n", $out, $sid, $ino ;
+	#printf "ARGV: %s", join(" ", @ARGV);
+	*STDOUT=*DEBUG;
+	printf "Hello world\n";
+
+	# found values
+
+	my ($fclass, $fprovider, $fra, $fname, $fgname) = ("","","","","");
+	my $found = 0;     # found a primitive matching criteria
+	my $foundRes = 0; # found correct Resource
+
+	open CRMOUT, "crm configure show 2>/dev/null |" || die "could not open crm output";
+	while (<CRMOUT>) {
+		chomp;
+		my $line = $_;
+		if ( ($foundRes==0) && ( $line =~ /^primitive ([a-zA-Z0-9_]+) ([a-zA-Z0-9_]+):([a-zA-Z0-9_]+):([a-zA-Z0-9_]+)/ )) {
+			#
+			# 1. found begin of primitive definition and we did not already found the resource
+			#   -> catch resource-name, resource-class, resource-provider, resource-agent
+			#
+			($fclass, $fprovider, $fra, $fname) = ($2, $3, $4, $1);
+			if (( $fclass eq $sclass ) && ( $fprovider eq $sprovider ) && ( $fra eq $sra ) ) {
+				#
+				# 2. we have found a primitive of the correct type
+				#
+				printf("rsc: %s\n", $_);
+				$found = 1;
+			} else {
+				$found = 0;
+			}
+		} elsif ( ($found==1) && ( $line =~ /^\s+params.*\s+($sparam)="([^"]+)"/ )) {
+			#
+			# 3. while we found a resource (primitive) of correct type we now could check the params
+			#
+			my ($paramName, $paramValue) = ($1, $2);
+			#
+			# InstanceName should look like <SID>_<TYPE><NUMBER>_<VIRTHOST>
+			#
+			if ($paramName =~ /InstanceName/) {
+				printf "PN=%s PV=%s\n", $paramName, $paramValue;
+			}
+			if ( $paramValue =~ /^${sid}_[a-zA-Z0-9]+${ino}_[a-zA-Z0-9]+$/ ) {
+				$foundRes=1;
+			} elsif ( ($found==1) && ( $line =~ /^\s+params.*\s+($sparam2)="([^"]+)"/ )) {
+				#
+				# 4. while we found a resource (primitive) of correct type we now could check the params 2
+				#
+				my ($paramName, $paramValue) = ($1, $2);
+				#
+				# InstanceName should look like <SID>_<TYPE><NUMBER>_<VIRTHOST>
+				#
+				if ($paramName =~ /ERS_InstanceName/) {
+					printf "PN=%s PV=%s\n", $paramName, $paramValue;
+				}
+				if ( $paramValue =~ /^${sid}_[a-zA-Z0-9]+${ino}_[a-zA-Z0-9]+$/ ) {
+					$foundRes=1;
+				}
+			}
+	        } elsif ( ($foundRes==1) && ( $line =~ /^(group|ms) ([a-zA-Z0-9_]+).*($fname)/ )) {
+			# 
+			# found resource is member of a group
+			#
+			$fgname = $2;
+		}
+	}	
+
+	if ($foundRes==1) {
+		if ($out eq "") {
+			printf "%s:%s:%s\n", $fname, $fgname, "-";
+			$rc=1;
+		} else {
+			open OUT, ">" . $out;
+			printf OUT "%s:%s:%s:%s:%s\n", $sid, $ino, $fname, $fgname, "-";
+			close OUT;
+			$rc=0;
+		}
+	}
+
+	# TODO: scores and node names sorted by scores -> use ptest
+	#
+	#ls3198:/usr/lib/ocf/resource.d/heartbeat # ptest -Ls | grep ls3199 | egrep '(rsc_SAPInstance_NA0_ASCS00_sapna0as|grp_sap_NA0)'
+	#group_color: grp_sap_NA0 allocation score on ls3199: 0
+	#group_color: rsc_SAPInstance_NA0_ASCS00_sapna0as allocation score on ls3199: 0
+	#native_color: rsc_SAPInstance_NA0_ASCS00_sapna0as allocation score on ls3199: -INFINITY
 	return $rc;
 } 
 
@@ -85,7 +199,6 @@ sub list_sap_nodes {
 	###############################################################################################
 	###############################################################################################
 	###############################################################################################
-
 	#
 	# 1. GET HOSTNAME WHERE FUNCTION WAS CALLED
 	#
@@ -205,7 +318,7 @@ if ( $cmd eq "cpa" ) {
 	                   "sta=s" => \$sta,
 		 ) &&
 	checkavail(($res, $sta, $act)) || paramproblem();
-	# TODO: action
+	$return_code=check_pending_action($res, $act, $sta);
 
 
  } elsif ( $cmd eq "lsr" ) {
@@ -214,7 +327,7 @@ if ( $cmd eq "cpa" ) {
 	                   "out=s" => \$out,
 		 ) &&
 	checkavail(($sid, $ino, $out)) || paramproblem();
-	# TODO: action
+	$return_code=list_sap_resources($out, $sid, $ino);
 	
 
  } elsif ( $cmd eq "fra" ) {
@@ -226,7 +339,7 @@ if ( $cmd eq "cpa" ) {
 	                   "nod=s" => \$nod,
 		 ) && 
 	checkavail(($res, $act)) || paramproblem();
-	return_code=fire_resource_action($res, $act, $nod);
+	$return_code=fire_resource_action($res, $act, $nod);
 
  } elsif ( $cmd eq "lsn" ) {
 	$result = GetOptions ("out=s" => \$out,    
@@ -234,7 +347,7 @@ if ( $cmd eq "cpa" ) {
 		 ) &&
 	checkavail(($res, $out)) || paramproblem();
 	# TODO: action
-	return_code=list_sap_nodes($out, $res);
+	$return_code=list_sap_nodes($out, $res);
 
  } elsif ( $cmd eq "h" ) {
 	 usage();
@@ -248,3 +361,7 @@ if ( $cmd eq "cpa" ) {
  }
 	
 exit $return_code;
+
+#################################################################
+#################################################################
+#################################################################
