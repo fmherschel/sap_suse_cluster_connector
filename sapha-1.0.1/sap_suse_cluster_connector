@@ -1,6 +1,7 @@
 #!/usr/bin/perl
 
 use Getopt::Long;
+use Sys::Hostname;
 use strict;
 
 sub usage() {
@@ -31,15 +32,15 @@ sub checkavail(@) {
 }
 
 sub fire_resource_action {
-	my ($res, $act, $nod) = @_;
-	my rc=0;
+	my ($rsc, $act, $nod) = @_;
+	my $rc=0;
 	if ( $act eq "stop" ) {
-		system("crm","resource",$act,$rsc) || rc=1;
+		system("crm","resource",$act,$rsc) or $rc=1;
 	} elsif ( $act eq "start" ) {
-		system("crm","resource",$act,$rsc) || rc=1;
+		system("crm","resource",$act,$rsc) or $rc=1;
 	} elsif ( $act eq "migrate" ) {
 		if ( defined $nod ) {
-			system("crm","resource",$act,$rsc,$nod) || rc=1;
+			system("crm","resource",$act,$rsc,$nod) or $rc=1;
 		}
 	} 
 	return $rc;
@@ -47,26 +48,149 @@ sub fire_resource_action {
 
 sub check_pending_action {
 	my ($res, $act, $sta) = @_;
-	my rc=0;
+	my $rc=0;
 	# TODO: implement bash like 
+	$rc=2;
 	#    
 	#    crm_resource -O -r $rsc | grep "${rsc}_${act}_.*: ${sta}"  && rc=0
 	return $rc;
 }
 
-sub list_sap_resources {  # --out file --sid sid --ino ino
+sub list_sap_resources {  
+	#
+	# --out file --sid sid --ino ino
+	#
 	my ($out, $sid, $ino) = @_;
-	my rc=0;
+	my $rc=0;
 	# TODO: implement action
+	$rc=2;
 	return $rc;
 } 
 
-sub list_sap_nodes { # --out file --res RES
-	my ($out, $res) = @_;
-	my rc=0;
-	# TODO: implement action
+sub list_sap_nodes { 
+	#
+        # --out file --res RES
+	#
+	###########################################
+	# return codes
+	#   0: everything worked fine
+	#   1:
+	#   2: internal error
+	#
+	my ($outfile, $resource) = @_;
+	my $rc=0;
+	# TODO: check implemented action
+	###############################################################################################
+	###############################################################################################
+	###############################################################################################
+	###############################################################################################
+	###############################################################################################
+
+	#
+	# 1. GET HOSTNAME WHERE FUNCTION WAS CALLED
+	#
+	my $myhostname = hostname;
+	#
+	##########################
+	#
+	# 2. GET NODE NAME, WHERE RESOURCE IS CURRENTLY RUNNING
+	#
+	# to get the current location of the resource in the cluster, lets ask the cluster itself ;-)
+	# we assume to get an answer in the following format:
+	#
+	# resource RES is running on: NODE
+	#
+	open CRMRES, "crm_resource -W -r $resource|";
+	my $crm_res_location_in = <CRMRES>;
+	chomp $crm_res_location_in;
+	#printf "DBG: where-result: %s\n", $crm_res_location_in;
+	my $current_node="";
+	if ( $crm_res_location_in =~ /^resource\s+(\w)+\sis running on:\s+(\w+)\W*/ ) {
+		#printf "DBG: where-result: match\n";
+		$current_node = $2;
+	}
+	close CRMRES;
+	#
+	##########################
+	#
+	# 3. GET ORDERED LIST OF CLUSTER NODES WHICH COULD RUN THE RESOURCE
+	#
+	my $node_list="";
+	my %resource;
+	open PTEST, "ptest -Ls |" || return 2;
+	#
+	# we rely on the following format:
+	#
+	#   ...
+	#   group_color: RSC allocation score on NODE: VALUE
+	#   ...
+	#   native_color: RSC allocation score on NODE: VALUE
+	#
+	while (<PTEST>) {
+		chomp;
+		# printf "%s\n", $_;
+		if ( /^group_color:\s*(\w+)\s+allocation score on\s+(\w+):\s+(.*)$/ ) {
+			# printf "DBG: group 1: %s, 2: %s, 3: %s\n", $1, $2, $3;
+			$resource{$1}->{nodes}->{$2}->{gc}=$3;
+			push(@{$resource{$1}->{priorities}->{$3}}, $2);
+		}
+		if ( /^native_color:\s*(\w+)\s+allocation score on\s+(\w+):\s+(.*)$/ ) {
+			# printf "DBG: native 1: %s, 2: %s, 3: %s\n", $1, $2, $3;
+			$resource{$1}->{nodes}->{$2}->{nc}=$3;
+			push(@{$resource{$1}->{priorities}->{$3}}, $2);
+		}
+	}
+	close PTEST;
+	#
+	# get sorted list of scores (excluding -INFINITY)
+	#
+	my @filtered_prios=grep (!/-INFINITY/, keys (%{$resource{$resource}->{priorities}}));
+	@filtered_prios=sort {$b <=> $a} @filtered_prios; # reverse order
+	#
+	# figure out node list sorted by prios (scores)
+	#
+	my $prio;
+	my $node;
+	my @nodes;
+	my %node_mark;
+	for $prio ( @filtered_prios ) {
+		#printf "for prio %s checking nodes %s\n", $prio, join " ",@{$resource{$resource}->{priorities}->{$prio}};
+		for $node ( @{$resource{$resource}->{priorities}->{$prio}} ) {
+			if ( ! defined ( $node_mark{$node} )) {
+				#printf "DBG: for prio %s adding node %s\n", $prio, $node;
+				$node_mark{$node}=1;
+				push(@nodes, $node);
+			} 
+		}
+	}
+	$node_list = join ",", @nodes;
+	#
+	# SOME MORE DBG
+	#
+	#my @allnodes=keys(%{$resource{$resource}->{nodes}});
+	#printf "DBG: %s all nodes: %s\n", $resource, join(",", @allnodes);
+	#printf "DBG: %s prios: %s\n", $resource, join(" ", @filtered_prios);
+	#printf "DBG: %s ordered nodes %s\n", $resource, join(" ", @nodes);
+	#
+	# RESULT
+	# 
+	if ( $outfile ne "" ) {
+		open OUTFILE, ">$outfile";
+		printf OUTFILE "%s:%s:%s:%s\n",  $resource, $myhostname, $current_node, $node_list;
+		close OUTFILE;
+	} else {
+		printf "%s:%s:%s:%s\n",  $resource, $myhostname, $current_node, $node_list;
+	}
 	return $rc;
 }
+
+
+
+############################################################################
+############################################################################
+############################################################################
+############################################################################
+############################################################################
 
 
 my ($cmd) = @ARGV; shift;
@@ -102,7 +226,7 @@ if ( $cmd eq "cpa" ) {
 	                   "nod=s" => \$nod,
 		 ) && 
 	checkavail(($res, $act)) || paramproblem();
-	fire_resource_action($res, $act; $nod);
+	return_code=fire_resource_action($res, $act, $nod);
 
  } elsif ( $cmd eq "lsn" ) {
 	$result = GetOptions ("out=s" => \$out,    
@@ -110,6 +234,7 @@ if ( $cmd eq "cpa" ) {
 		 ) &&
 	checkavail(($res, $out)) || paramproblem();
 	# TODO: action
+	return_code=list_sap_nodes($out, $res);
 
  } elsif ( $cmd eq "h" ) {
 	 usage();
@@ -122,4 +247,4 @@ if ( $cmd eq "cpa" ) {
  	paramproblem()
  }
 	
-exit $return_code
+exit $return_code;
