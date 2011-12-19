@@ -23,10 +23,11 @@
 #
 #    4. Force sapstartsrv to be restarted (i.e. by killing the sapstartsrv process)
 #
-# IMPLEMENTATION REMARKS / TODO :x
+# IMPLEMENTATION REMARKS / TODO 
 #
 # - using crm_resource instead of crm, because of bugzilla: 
 #   Bug 711960 - Command line interface crm fails with Traceback when called from a deamon via system()
+#   ---> solved ---> was missing SIGCHLD-capturing
 # - test hardware at this moment is ls3198 / ls3199
 # - test SAP system NA0 with an updated sapstartsrv, because sap kernel was to old
 # 
