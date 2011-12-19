@@ -1,14 +1,35 @@
 #!/usr/bin/perl
+############################################################################
+#
+# sap_suse_cluster_connector
+#
+# Author:  fabian.herschel@suse.com
+# (c) 2010 SUSE Linux Products GmbH, Nuremberg, Germany
+# License: GPLv2 or later
+#
+############################################################################
+#
+# REMARKS:
+#    we need record pending activated to be able to catch pending actions
+#    op_defaults $id="op_defaults-options" record-pending="true"
+#
+# TODOs:
+#    TODO: testing, testing, testing
+#    TODO: long cmd names (like check_pending_action)
+#    TODO: Could we check for the record-pending option?
+#    TODO: database instances -> lsr --sid SID --dbhost HOST --dbtype TYPE
+#
 
 use Getopt::Long;
 use Sys::Hostname;
 use strict;
 
+
 sub usage() {
 printf "$0 cmd options
       cmd:  h | help
       cpa | check_pending_action --res RES --act ACT --sta STA
-      lsr | list_sap_resources --out FILE --sid SID --ino INO
+      lsr | list_sap_resources --out FILE --sid SID --ino INO | --dbhost HOST --dbtype TYPE
       fra | fire_resource_action --res RES --act ACT  [ --nod NODE ]
       lsn | list_sap_nodes  --out FILE --res RES
 ";
