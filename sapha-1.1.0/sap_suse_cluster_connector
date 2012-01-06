@@ -23,6 +23,8 @@
 use Getopt::Long;
 use Sys::Hostname;
 use strict;
+	open DEBUG, ">>/tmp/sapha.sap_suse_cluster_conector.log" || die "could not open debug";
+	*STDOUT=*DEBUG;
 
 my $cmd_crm = "crm";
 my $cmd_crm_resource = "crm_resource";
@@ -98,15 +100,28 @@ sub check_pending_action {
         #     2: internal error
 	$rc=1;
 	#    
+	# rsc_ip_NA1_sapna1as     (ocf::heartbeat:IPaddr2) Started : rsc_ip_NA1_sapna1as_start_0 (node=node0101, call=16, rc=0): complete
+        # rsc_sap_NA1_ASCS00_sapna1as:0   (ocf::heartbeat:SAPInstance) Stopped : rsc_sap_NA1_ASCS00_sapna1as:0_monitor_0 (node=node0102, call=11, rc=7): complete
+        # rsc_sap_NA1_ASCS00_sapna1as:0   (ocf::heartbeat:SAPInstance) Slave : rsc_sap_NA1_ASCS00_sapna1as:0_start_0 (node=node0101, call=-1, rc=14): pending
+        # rsc_sap_NA1_ASCS00_sapna1as:0   (ocf::heartbeat:SAPInstance) Master : rsc_sap_NA1_ASCS00_sapna1as:0_demote_0 (node=node0101, call=-1, rc=14): pending
+        #
 	#    crm_resource -O -r $rsc | grep "${rsc}_${act}_.*: ${sta}"  && rc=0
-	open CRMOUT, "$cmd_crm_resource -O -r $res 2>/dev/null |" or $rc=2;
+	#open CRMOUT, "$cmd_crm_resource -O -r $res 2>/dev/null |" or $rc=2;
+	open CRMOUT, "$cmd_crm_resource -O 2>/dev/null |" or $rc=2;
+	printf "<--------- cpa ------>\n";
 	while (<CRMOUT>) {
 		chomp;
 		my $line = $_;
-		if ( $line =~ /${res}_${act}_.*: ${sta}/ ) {
+		printf "%s", $line;
+		# if ( $line =~ /${res}_${act}_.*: ${sta}/ ) { # FH 2012-01-05: Changed to find also clones and master-slaves
+		#if ( $line =~ /${res}(:[0-9]+_|_)${act}_.*: ${sta}/ ) {
+		if ( $line =~ /${res}.*: ${sta}/ ) {
 			$rc=0;
+			printf "<---- FOUND!!";
 		}
+		printf "\n";
 	}
+	printf "</--------- cpa ------>\n";
 	return $rc;
 }
 
@@ -134,13 +149,8 @@ sub list_sap_resources {
 	#my ($out, $sid, $ino ) = @ARGV;
 
 	$ENV{'PATH'} = $ENV{'PATH'} . ":/usr/sbin:/sbin";
-	open DEBUG, ">>/tmp/TEST.pl.debug" || die "could not open debug";
-	printf DEBUG "(out, sid, ino) = ( %s, %s, %s)\n", $out, $sid, $ino ;
-	#printf "ARGV: %s", join(" ", @ARGV);
-	*STDOUT=*DEBUG;
-	printf "Hello world\n";
-
-	# found values
+	printf "PARAMS: (out, sid, ino) = ( %s, %s, %s)\n", $out, $sid, $ino ;
+	printf "ARGV: %s", join(" ", @ARGV);
 
 	my ($fclass, $fprovider, $fra, $fname, $fgname) = ("","","","","");
 	my $found = 0;     # found a primitive matching criteria
@@ -176,7 +186,7 @@ sub list_sap_resources {
 			if ($paramName =~ /InstanceName/) {
 				printf "PN=%s PV=%s\n", $paramName, $paramValue;
 			}
-			if ( $paramValue =~ /^${sid}_[a-zA-Z0-9]+${ino}_[a-zA-Z0-9]+$/ ) {
+			if ( $paramValue =~ /^${sid}_[a-zA-Z0-9]+${ino}_[a-zA-Z0-9_-]+$/ ) {
 				$foundRes=1;
 			} elsif ( ($found==1) && ( $line =~ /^\s+params.*\s+($sparam2)="([^"]+)"/ )) {
 				#
@@ -189,7 +199,7 @@ sub list_sap_resources {
 				if ($paramName =~ /ERS_InstanceName/) {
 					printf "PN=%s PV=%s\n", $paramName, $paramValue;
 				}
-				if ( $paramValue =~ /^${sid}_[a-zA-Z0-9]+${ino}_[a-zA-Z0-9]+$/ ) {
+				if ( $paramValue =~ /^${sid}_[a-zA-Z0-9]+${ino}_[a-zA-Z0-9_-]+$/ ) {
 					$foundRes=1;
 				}
 			}
@@ -207,6 +217,7 @@ sub list_sap_resources {
 			$rc=1;
 		} else {
 			open OUT, ">" . $out;
+			printf "FOUND RESOURCE: %s:%s:%s:%s:%s\n", $sid, $ino, $fname, $fgname, "-";
 			printf OUT "%s:%s:%s:%s:%s\n", $sid, $ino, $fname, $fgname, "-";
 			close OUT;
 			$rc=0;
@@ -330,6 +341,7 @@ sub list_sap_nodes {
 	# 
 	if ( $outfile ne "" ) {
 		open OUTFILE, ">$outfile";
+		printf "%s:%s:%s:%s\n",  $resource, $myhostname, $current_node, $node_list;
 		printf OUTFILE "%s:%s:%s:%s\n",  $resource, $myhostname, $current_node, $node_list;
 		close OUTFILE;
 	} else {
