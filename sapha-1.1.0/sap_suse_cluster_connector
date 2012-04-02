@@ -370,10 +370,9 @@ if  ($cmd eq "init")  {
 } elsif ( $cmd eq "cpa" ) {
 	$result = GetOptions ("res=s" => \$res,    
 	                   "act=s" => \$act,
-	                   "sta=s" => \$sta,
 		 ) &&
-	checkavail(($res, $sta, $act)) || paramproblem();
-	$return_code=check_pending_action($res, $act, $sta);
+	checkavail(($res, $act)) || paramproblem();
+	$return_code=check_pending_action($res, $act, "pending");
 
 
  } elsif ( $cmd eq "lsr" ) {
