@@ -1,0 +1,265 @@
+.TH sap_suse_cluster_connector 8 "04 January 2012" "sap_suse_cluster_connector 1.1" "SAP High Availability"
+.\"
+.SH NAME
+sap_suse_cluster_connector \- handle sapstartsrv cluster calls
+.\"
+.SH SYNOPSIS
+.P
+.B sap_suse_cluster_connector \fIcommand\fR \fIoptions-and-parameters\fR
+.P
+.B sap_\fIvendor\fB_cluster_connector\fR \fIcommand\fR \fIoptions-and-parameters\fR
+.\"
+.SH DESCRIPTION
+\fBsap_suse_cluster_connector\fP (or in general \fBsap_\fIvendor\fB_cluster_connector\fR) is the interface between the SAP HA cluster library and the cluster software. Currently it needs to serve calls like queries about cluster status or to request cluster resource actions.
+.SH COMMANDS
+.HP
+\fBhelp\fR or \fB--help\fR
+.br
+print help text and usage. 
+.HP
+\fBinit\fR
+.br
+check cluster installation and do some optional initialization.
+.HP
+\fBcpa\fR --res \fERES\fR --act \fIACT\fR
+.br
+check for specified pending/active actions in the cluster.
+.HP
+\fBfra\fR --res \fIRES\fR --act \fIACT\fR  [ --nod \fINODE\fR ]
+.br
+fire/start a cluster action like start/stop/migrate a resource.
+.HP
+\fBlsn\fR --out \fIFILE\fR --res \fIRES\fR
+.br
+list sap nodes for specified resource.
+.HP
+\fBlsr\fR --out \fIFILE\fR --sid \fISID\fR --ino \fIINO\fR
+.br
+list sap resources matching the search criteria.
+\."
+.SH PARAMS
+.HP
+\fBSID\fR  
+SAP System Identifier  (3 alphanum)
+.HP
+\fBINO\fR 
+SAP Instance Number (2 digits)
+.HP
+\fBACT\fR 
+Cluster action "start" or "stop"
+.HP
+\fBFILE\fR 
+Outputfile for result parsing
+.HP
+\fBRES\fR 
+Cluster Resource Identifier
+.HP
+\fBNODE\fR 
+Cluster Node Name
+\."
+.SH OUTPUT FIELDS
+All param identifiers like \fBSID\fR might also be referenced in output formats (see detailed command description). Additionaly there are some referenced output fields, which are not used as parameters:
+.HP
+\fBGRP\fR 
+Cluster Group Identifier
+.HP
+\fBCLUSTER_NODES\fR
+List of NODE (separated with comma (,)) within the cluster that could run the resource
+.HP
+\fBCURR_NODE\fR
+NODE which is currently running the resource
+.HP
+\fBPRIO_NODES\fR
+Priorized List of NODE (separated with comma (,)) within the cluster that could run the resource
+.HP
+.SH COMMANDS IN DETAIL
+.HP
+\fBinit\fR (initialize)
+.br
+Perform some basic tests, if the cluster software is installed and the cluster framework is stated. This is not intended to
+do a cluster validation. The command should only check, whether the cluster commands used are available. The check "cluster
+framework strarted?" might be ignored - maybe it does not fit for some cluster architectures. In that case the check only needs
+to test the availability of the external and needed cluster commands.
+
+Optionaly: This command could also implement some initializations, if needed.
+
+\fBParameters\fR
+None.
+
+\fBReturn Codes\fR
+.br 
+0: cluster software seams to be installed proper and cluster framework is stated on local node.
+.br
+1: error during detection of cluster status
+.br
+2: script notified bad parameters
+.br
+3: cluster commands are not installed correctly (missing commands)
+.br
+4: cluster commands are installed correctly but cluster framework is not running (optional)
+
+\fBOutput\fR None.
+.HP
+\fBcpa\fR (check for pending actions)
+.br
+This command should check properly against the running cluster, if a given
+action on a SAP Instance is already running
+
+\fBParameters\fR - all parameters are mandatory.
+.br
+--res \fIRES\fR 
+Cluster resource to be queried
+.br 
+--act \fIACT\fR
+Action type (start/stop) to be queried.
+
+\fBReturn Codes\fR
+.br
+0: found pending action of queried type
+.br
+1: did not found pending action of queried type
+.br
+2: script notified bad parameters
+
+\fBOutput\fR
+None.
+.HP
+\fBlsr\fR (list sap resources)
+.br
+This command is used to figure out the cluster resource and optionally group name for a specific SAP system and instance.
+
+\fBParameters\fR - all parameters are mandatory
+.br
+--out \fIFILE\fP
+Output file to be used.
+.br
+--sid \fISID\fP
+SAP system identifier to be queried.
+.br
+--ino \fIINO\fP
+SAP instance number to be queried.
+
+\fBReturn Codes\fR
+.br
+0: success
+.br
+1: no success / internal error
+.br
+2: script notified bad parameters
+
+\fBOutput\fR
+Formatted query answer to given \fIFILE\fP.
+.br
+- Multiple rows (data sets) allowed even if typically there should only be one resource matching the query.
+.br
+- Each row / data set covers its values in a colon-separated (':') list.
+.br
+- Format:   \fISID\fP:\fIINO\fP:\fIRES\fP:\fIGRP\fP:\fICLUSTER_NODES\fP
+
+.HP
+\fBfra\fR (fire resource action)
+.br
+This command fires a cluster change like "stop resource XX" or "start resource XX". It is not intended to wait till the cluster has processed the resource change. The SAP instance is specified by the cluster resource name.
+
+\fBParameters - only \fINODE\fP is optional.\fR
+.br
+--res \fIRES\fP 
+Cluster resource to be controlled.
+.br
+--act \fIACT\fP
+Cluster action (start/stop/migrate) to be "fired".
+.br 
+[ --nod \fINODE\fP ]
+For migrations this defines the destination node.
+
+\fBReturn Codes\fR
+.br
+0: success; 
+.br
+1: no success / internal error; 
+.br
+2: script notified bad parameters
+
+\fBOutput\fR None.
+.HP
+\fBlsn\fR (list sap nodes)
+.br
+This command should list the current node and a priorized list of possible cluster nodes for a specific SAP instance. In this case the SAP instance is queried by the cluster resource name.
+
+\fBParameters\fR
+.br
+--out \fIFILE\fP 
+Output file for results.
+.br
+--res \fIRES\fP
+Cluster resource to be queried.
+
+\fBReturn Codes\fR
+.br
+0: success;
+.br
+1: no success / internal error;
+.br
+2: script notified bad parameters;
+
+\fBOutput\fR 
+Formatted query answer to given \fIFILE\fP.
+.br
+- One single row (data set).
+.br
+- Values are separated by a colon (':').
+.br
+- Format:  \fIRES\fR:\fIGRP\fR:\fICURR_NODE\fR:\fIPRIO_NODES\fR
+.SH EXAMPLES
+.HP
+\fBsap_suse_cluster_connector init\fR
+.br
+Do a minor check, if the cluster framework command line interface is available.
+.HP
+\fBsap_suse_cluster_connector lsr –out /tmp/myfile00.txt –sid C11 –ino 02\fR
+.br
+Look-up for the SAP instance number 02 of the SAP system C11 and return the cluster resource name.
+C11:02:rsc_sap_C11_D02:grp_sap_C11_Dialog2:ls3198,ls3199
+.HP
+\fBsap_suse_cluster_connector fra –res rsc_sap_C11_D02 –act start\fR
+.br
+Start the cluster resource rsc_sap_C11_D02. While the lsr command returned the resource name rsc_sap_C11_D02 the matching SAP instance is C11, instance number 02 (see example before).
+.HP
+\fBsap_suse_cluster_connector cpa –res rsc_sap_C11_D02 –act start\fR
+.br
+Check, if the cluster action to start the SAP instance for system C11 and instance number 02 is already in progress.
+.HP
+\fBsap_suse_cluster_connector lsn –out /tmp/myfile01.txt –res rsc_sap_C11_D02\fR
+.br
+Look-up for the current cluster node and all possible cluster nodes to run the cluster resource named rsc_sap_C11_D02.
+rsc_sap_C11_D02:grp_sap_C11_Dialog2:ls3198:ls3198,ls3199
+.\"
+.SH EXIT STATUS
+See detailled descrition of the command. In general:
+.HP
+.B 0
+	successfull command termination or "yes" to a yes-no-query
+.HP
+.B 1
+	unsucessfull command termination or "no" to a yes-no-query
+.HP
+.B 2
+	error occurred during command termination - mostly bad parameters
+.\"
+.SH BUGS
+No known bugs yet.
+.\"
+.SH SEE ALSO
+\fBsbd\fP(7), \fBsbd\fP(8), \fBstonith\fP(8), \fBClusterTools2\fP(7)
+.SH AUTHOR
+Fabian Herschel fabian.herschel@suse.com
+SAP Architect & Technical Manager
+.\"
+.SH COPYRIGHT
+(c) 2011, 2012 SUSE Linux Products GmbH
+.br 
+sap_suse_cluster_conenctor comes with ABSOLUTELY NO WARRANTY.
+.br
+For details see the GNU General Public License at
+http://www.gnu.org/licenses/gpl.html
+.\"
