@@ -1,0 +1,6 @@
+#!/bin/bash
+set -u
+VERSION=0.1.1
+PREFIXDIR=sap_suse_cluster_connector-$VERSION; 
+tar -czvf sap_suse_cluster_connector-$VERSION.tgz --xform "s,^,$PREFIXDIR/," \
+    --show-transformed-names --exclude sap_suse_cluster_connector-${VERSION}.tgz sap* bin man8
