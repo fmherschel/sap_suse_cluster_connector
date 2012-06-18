@@ -1,0 +1,425 @@
+#!/usr/bin/perl
+############################################################################
+#
+# sap_suse_cluster_connector
+#
+# Author:  fabian.herschel@suse.com
+# (c) 2010 SUSE Linux Products GmbH, Nuremberg, Germany
+# License: GPLv2 or later
+#
+############################################################################
+#
+# REMARKS:
+#    we need record pending activated to be able to catch pending actions
+#    op_defaults $id="op_defaults-options" record-pending="true"
+#
+# TODOs:
+#    TODO: testing, testing, testing
+#    TODO: long cmd names (like check_pending_action)
+#    TODO: Could we check for the record-pending option?
+#    TODO: database instances -> lsr --sid SID --dbhost HOST --dbtype TYPE
+#
+
+use Getopt::Long;
+use Sys::Hostname;
+use strict;
+use File::Temp qw/ tempfile tempdir /;
+
+my $DEBUG; my $filename;
+($DEBUG, $filename) = tempfile("/tmp/sap_suse_cluster_conector.XXXXX", SUFFIX => '.log');
+#	open DEBUG, ">>/tmp/sapha.sap_suse_cluster_conector.log" || die "could not open debug";
+*STDOUT=*$DEBUG;
+
+my $cmd_crm = "crm";
+my $cmd_crm_resource = "crm_resource";
+my $cmd_ptest = "ptest";
+
+my @all_cmds = ($cmd_crm, $cmd_crm_resource, $cmd_ptest);
+
+sub usage() {
+printf "$0 --help
+$0 cmd options
+      where cmd could be:  
+      help 
+      init
+      cpa --res RES --act ACT --sta STA
+      lsr --out FILE --sid SID --ino INO | --dbhost HOST --dbtype TYPE
+      fra --res RES --act ACT  [ --nod NODE ]
+      lsn --out FILE --res RES
+";
+}
+
+sub paramproblem() {
+	usage();
+	exit(2);
+}
+
+sub checkavail(@) {
+	my @CHECK = @_;
+	my $chk;
+	my $rc=1;
+	for $chk ( @CHECK ) {
+		if ( ! ( defined ( $chk )))  {
+			$rc=0;
+		}
+	}
+	return $rc;
+}
+
+sub initial_check() {
+	my $rc=0;
+	my $check_cmd;
+	for $check_cmd ( @all_cmds) {
+	}
+	return $rc;
+}
+
+sub fire_resource_action {
+	my ($rsc, $act, $nod) = @_;
+	my $rc=0;
+	if ( $act eq "stop" ) {
+		printf "fire_resource_actioni stop\n";
+		if (system($cmd_crm,"resource",$act,$rsc)) { $rc=1; }
+	} elsif ( $act eq "start" ) {
+		printf "fire_resource_action\n";
+		if (system($cmd_crm,"resource",$act,$rsc) ) { $rc=1; }
+	} elsif ( $act eq "migrate" ) {
+		printf "fire_resource_action\n";
+		if ( defined $nod ) {
+			if (system($cmd_crm,"resource",$act,$rsc,$nod) ) { $rc=1; }
+		}
+	} 
+	printf " rc=%i\n", $rc;
+	return $rc;
+}
+
+sub check_pending_action {
+	my ($res, $act, $sta) = @_;
+	my $rc=0;
+	my $found=0;
+	#
+	# rc:
+	#     0: found
+	#     1: not found
+        #     2: internal error
+	$rc=1;
+	#    
+	# rsc_ip_NA1_sapna1as     (ocf::heartbeat:IPaddr2) Started : rsc_ip_NA1_sapna1as_start_0 (node=node0101, call=16, rc=0): complete
+        # rsc_sap_NA1_ASCS00_sapna1as:0   (ocf::heartbeat:SAPInstance) Stopped : rsc_sap_NA1_ASCS00_sapna1as:0_monitor_0 (node=node0102, call=11, rc=7): complete
+        # rsc_sap_NA1_ASCS00_sapna1as:0   (ocf::heartbeat:SAPInstance) Slave : rsc_sap_NA1_ASCS00_sapna1as:0_start_0 (node=node0101, call=-1, rc=14): pending
+        # rsc_sap_NA1_ASCS00_sapna1as:0   (ocf::heartbeat:SAPInstance) Master : rsc_sap_NA1_ASCS00_sapna1as:0_demote_0 (node=node0101, call=-1, rc=14): pending
+        #
+	#    crm_resource -O -r $rsc | grep "${rsc}_${act}_.*: ${sta}"  && rc=0
+	#open CRMOUT, "$cmd_crm_resource -O -r $res 2>/dev/null |" or $rc=2;
+	open CRMOUT, "$cmd_crm_resource -O 2>/dev/null |" or $rc=2;
+	printf "<--------- cpa ------>\n";
+	while (<CRMOUT>) {
+		chomp;
+		my $line = $_;
+		printf "%s", $line;
+		# if ( $line =~ /${res}_${act}_.*: ${sta}/ ) { # FH 2012-01-05: Changed to find also clones and master-slaves
+		#if ( $line =~ /${res}(:[0-9]+_|_)${act}_.*: ${sta}/ ) {
+		if ( $line =~ /${res}.*: ${sta}/ ) {
+			$rc=0;
+			printf "<---- FOUND!!";
+		}
+		printf "\n";
+	}
+	printf "</--------- cpa ------>\n";
+	return $rc;
+}
+
+sub list_sap_resources {  
+	#
+	# --out file --sid sid --ino ino
+	#
+	my ($out, $sid, $ino) = @_;
+	my $rc=2;
+	# TODO: implement action
+	#
+	# typical crm syntax/output:
+	# primitive rsc_SAPInstance_NA0_ASCS00_sapna0as ocf:heartbeat:SAPInstance \
+	#        params InstanceName="NA0_ASCS00_sapna0as" AUTOMATIC_RECOVER="true" START_PROFILE="/usr/sap/NA0/SYS/profile/START_ASCS00_sapna0as" \
+	#        op monitor interval="120s" timeout="60s" start_delay="120s" \
+	#        op start interval="0" timeout="120s" \
+	#        op stop interval="0" timeout="180s" on_fail="block" \
+	#        meta target-role="Stopped"
+	#
+	# TODO: we might also need to check param  ERS_InstanceName
+	#
+	#use IO::Handle;
+
+	my ($sclass, $sprovider, $sra, $sparam, $sparam2 ) = ("ocf", "heartbeat", "SAPInstance", "InstanceName", "ERS_InstanceName");
+	#my ($out, $sid, $ino ) = @ARGV;
+
+	$ENV{'PATH'} = $ENV{'PATH'} . ":/usr/sbin:/sbin";
+	printf "PARAMS: (out, sid, ino) = ( %s, %s, %s)\n", $out, $sid, $ino ;
+	printf "ARGV: %s", join(" ", @ARGV);
+
+	my ($fclass, $fprovider, $fra, $fname, $fgname) = ("","","","","");
+	my $found = 0;     # found a primitive matching criteria
+	my $foundRes = 0; # found correct Resource
+
+	open CRMOUT, "$cmd_crm configure show 2>/dev/null |" || die "could not open crm output";
+	while (<CRMOUT>) {
+		chomp;
+		my $line = $_;
+		if ( ($foundRes==0) && ( $line =~ /^primitive ([a-zA-Z0-9_]+) ([a-zA-Z0-9_]+):([a-zA-Z0-9_]+):([a-zA-Z0-9_]+)/ )) {
+			#
+			# 1. found begin of primitive definition and we did not already found the resource
+			#   -> catch resource-name, resource-class, resource-provider, resource-agent
+			#
+			($fclass, $fprovider, $fra, $fname) = ($2, $3, $4, $1);
+			if (( $fclass eq $sclass ) && ( $fprovider eq $sprovider ) && ( $fra eq $sra ) ) {
+				#
+				# 2. we have found a primitive of the correct type
+				#
+				printf("rsc: %s\n", $_);
+				$found = 1;
+			} else {
+				$found = 0;
+			}
+		} elsif ( ($found==1) && ( $line =~ /^\s+params.*\s+($sparam)="([^"]+)"/ )) {
+			#
+			# 3. while we found a resource (primitive) of correct type we now could check the params
+			#
+			my ($paramName, $paramValue) = ($1, $2);
+			#
+			# InstanceName should look like <SID>_<TYPE><NUMBER>_<VIRTHOST>
+			#
+			if ($paramName =~ /InstanceName/) {
+				printf "PN=%s PV=%s\n", $paramName, $paramValue;
+			}
+			if ( $paramValue =~ /^${sid}_[a-zA-Z0-9]+${ino}_[a-zA-Z0-9_-]+$/ ) {
+				$foundRes=1;
+			} elsif ( ($found==1) && ( $line =~ /^\s+params.*\s+($sparam2)="([^"]+)"/ )) {
+				#
+				# 4. while we found a resource (primitive) of correct type we now could check the params 2
+				#
+				my ($paramName, $paramValue) = ($1, $2);
+				#
+				# InstanceName should look like <SID>_<TYPE><NUMBER>_<VIRTHOST>
+				#
+				if ($paramName =~ /ERS_InstanceName/) {
+					printf "PN=%s PV=%s\n", $paramName, $paramValue;
+				}
+				if ( $paramValue =~ /^${sid}_[a-zA-Z0-9]+${ino}_[a-zA-Z0-9_-]+$/ ) {
+					$foundRes=1;
+				}
+			}
+	        } elsif ( ($foundRes==1) && ( $line =~ /^(group|ms) ([a-zA-Z0-9_]+).*($fname)/ )) {
+			# 
+			# found resource is member of a group
+			#
+			$fgname = $2;
+		}
+	}	
+
+	if ($foundRes==1) {
+		if ($out eq "") {
+			printf "%s:%s:%s\n", $fname, $fgname, "-";
+			$rc=1;
+		} else {
+			open OUT, ">" . $out;
+			printf "FOUND RESOURCE: %s:%s:%s:%s:%s\n", $sid, $ino, $fname, $fgname, "-";
+			printf OUT "%s:%s:%s:%s:%s\n", $sid, $ino, $fname, $fgname, "-";
+			close OUT;
+			$rc=0;
+		}
+	}
+
+	# TODO: scores and node names sorted by scores -> use ptest
+	#
+	#ls3198:/usr/lib/ocf/resource.d/heartbeat # ptest -Ls | grep ls3199 | egrep '(rsc_SAPInstance_NA0_ASCS00_sapna0as|grp_sap_NA0)'
+	#group_color: grp_sap_NA0 allocation score on ls3199: 0
+	#group_color: rsc_SAPInstance_NA0_ASCS00_sapna0as allocation score on ls3199: 0
+	#native_color: rsc_SAPInstance_NA0_ASCS00_sapna0as allocation score on ls3199: -INFINITY
+	return $rc;
+} 
+
+sub list_sap_nodes { 
+	#
+        # --out file --res RES
+	#
+	###########################################
+	# return codes
+	#   0: everything worked fine
+	#   1:
+	#   2: internal error
+	#
+	my ($outfile, $resource) = @_;
+	my $rc=0;
+	# TODO: check implemented action
+	###############################################################################################
+	###############################################################################################
+	###############################################################################################
+	###############################################################################################
+	###############################################################################################
+	#
+	# 1. GET HOSTNAME WHERE FUNCTION WAS CALLED
+	#
+	my $myhostname = hostname;
+	#
+	##########################
+	#
+	# 2. GET NODE NAME, WHERE RESOURCE IS CURRENTLY RUNNING
+	#
+	# to get the current location of the resource in the cluster, lets ask the cluster itself ;-)
+	# we assume to get an answer in the following format:
+	#
+	# resource RES is running on: NODE
+	#
+	open CRMRES, "$cmd_crm_resource -W -r $resource|";
+	my $crm_res_location_in = <CRMRES>;
+	chomp $crm_res_location_in;
+	#printf "DBG: where-result: %s\n", $crm_res_location_in;
+	my $current_node="";
+	if ( $crm_res_location_in =~ /^resource\s+(\w)+\sis running on:\s+(\w+)\W*/ ) {
+		#printf "DBG: where-result: match\n";
+		$current_node = $2;
+	}
+	close CRMRES;
+	#
+	##########################
+	#
+	# 3. GET ORDERED LIST OF CLUSTER NODES WHICH COULD RUN THE RESOURCE
+	#
+	my $node_list="";
+	my %resource;
+	open PTEST, "$cmd_ptest -Ls |" || return 2;
+	#
+	# we rely on the following format:
+	#
+	#   ...
+	#   group_color: RSC allocation score on NODE: VALUE
+	#   ...
+	#   native_color: RSC allocation score on NODE: VALUE
+	#
+	while (<PTEST>) {
+		chomp;
+		# printf "%s\n", $_;
+		if ( /^group_color:\s*(\w+)\s+allocation score on\s+(\w+):\s+(.*)$/ ) {
+			# printf "DBG: group 1: %s, 2: %s, 3: %s\n", $1, $2, $3;
+			$resource{$1}->{nodes}->{$2}->{gc}=$3;
+			push(@{$resource{$1}->{priorities}->{$3}}, $2);
+		}
+		if ( /^native_color:\s*(\w+)\s+allocation score on\s+(\w+):\s+(.*)$/ ) {
+			# printf "DBG: native 1: %s, 2: %s, 3: %s\n", $1, $2, $3;
+			$resource{$1}->{nodes}->{$2}->{nc}=$3;
+			push(@{$resource{$1}->{priorities}->{$3}}, $2);
+		}
+	}
+	close PTEST;
+	#
+	# get sorted list of scores (excluding -INFINITY)
+	#
+	my @filtered_prios=grep (!/-INFINITY/, keys (%{$resource{$resource}->{priorities}}));
+	@filtered_prios=sort {$b <=> $a} @filtered_prios; # reverse order
+	#
+	# figure out node list sorted by prios (scores)
+	#
+	my $prio;
+	my $node;
+	my @nodes;
+	my %node_mark;
+	for $prio ( @filtered_prios ) {
+		#printf "for prio %s checking nodes %s\n", $prio, join " ",@{$resource{$resource}->{priorities}->{$prio}};
+		for $node ( @{$resource{$resource}->{priorities}->{$prio}} ) {
+			if ( ! defined ( $node_mark{$node} )) {
+				#printf "DBG: for prio %s adding node %s\n", $prio, $node;
+				$node_mark{$node}=1;
+				push(@nodes, $node);
+			} 
+		}
+	}
+	$node_list = join ",", @nodes;
+	#
+	# SOME MORE DBG
+	#
+	#my @allnodes=keys(%{$resource{$resource}->{nodes}});
+	#printf "DBG: %s all nodes: %s\n", $resource, join(",", @allnodes);
+	#printf "DBG: %s prios: %s\n", $resource, join(" ", @filtered_prios);
+	#printf "DBG: %s ordered nodes %s\n", $resource, join(" ", @nodes);
+	#
+	# RESULT
+	# 
+	if ( $outfile ne "" ) {
+		open OUTFILE, ">$outfile";
+		printf "%s:%s:%s:%s\n",  $resource, $myhostname, $current_node, $node_list;
+		printf OUTFILE "%s:%s:%s:%s\n",  $resource, $myhostname, $current_node, $node_list;
+		close OUTFILE;
+	} else {
+		printf "%s:%s:%s:%s\n",  $resource, $myhostname, $current_node, $node_list;
+	}
+	return $rc;
+}
+
+
+
+############################################################################
+############################################################################
+############################################################################
+############################################################################
+############################################################################
+
+
+my ($cmd) = @ARGV; shift;
+my $result=2;
+my ($sid, $ino, $act, $out, $res, $nod, $sta);
+my $return_code=2;
+$ENV{'PATH'} = $ENV{'PATH'} . ":/usr/sbin:/sbin";
+
+if  ($cmd eq "init")  {
+	$return_code=initial_check();
+} elsif ( $cmd eq "cpa" ) {
+	$result = GetOptions ("res=s" => \$res,    
+	                   "act=s" => \$act,
+		 ) &&
+	checkavail(($res, $act)) || paramproblem();
+	$return_code=check_pending_action($res, $act, "pending");
+
+
+ } elsif ( $cmd eq "lsr" ) {
+	$result = GetOptions ("sid=s" => \$sid,    
+	                   "ino=s" => \$ino,
+	                   "out=s" => \$out,
+		 ) &&
+	checkavail(($sid, $ino, $out)) || paramproblem();
+	$return_code=list_sap_resources($out, $sid, $ino);
+	
+
+ } elsif ( $cmd eq "fra" ) {
+	 #
+	 # remark: don't check if nod is set - as it is optional
+	 #
+	$result = GetOptions ("res=s" => \$res,    
+	                   "act=s" => \$act,
+	                   "nod=s" => \$nod,
+		 ) && 
+	checkavail(($res, $act)) || paramproblem();
+	$return_code=fire_resource_action($res, $act, $nod);
+
+ } elsif ( $cmd eq "lsn" ) {
+	$result = GetOptions ("out=s" => \$out,    
+	                   "res=s" => \$res,
+		 ) &&
+	checkavail(($res, $out)) || paramproblem();
+	# TODO: action
+	$return_code=list_sap_nodes($out, $res);
+
+ } elsif ( $cmd eq "h" || $cmd eq "help" ||  $cmd eq "--help" ) {
+	 usage();
+	 exit 0;
+
+ } else  {
+	 #
+	 # remark: found no or unknown cmd
+	 #
+ 	paramproblem()
+ }
+	
+exit $return_code;
+
+#################################################################
+#################################################################
+#################################################################
