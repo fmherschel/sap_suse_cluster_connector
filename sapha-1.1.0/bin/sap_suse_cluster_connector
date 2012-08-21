@@ -27,7 +27,6 @@ use File::Temp qw/ tempfile tempdir /;
 
 my $DEBUG; my $filename;
 ($DEBUG, $filename) = tempfile("/tmp/sap_suse_cluster_conector.XXXXX", SUFFIX => '.log');
-#	open DEBUG, ">>/tmp/sapha.sap_suse_cluster_conector.log" || die "could not open debug";
 *STDOUT=*$DEBUG;
 
 my $cmd_crm = "crm";
@@ -36,6 +35,7 @@ my $cmd_ptest = "ptest";
 
 my @all_cmds = ($cmd_crm, $cmd_crm_resource, $cmd_ptest);
 
+#	printf "ARGV: %s\n", join(" ", @ARGV);
 sub usage() {
 printf "$0 --help
 $0 cmd options
@@ -153,6 +153,7 @@ sub list_sap_resources {
 	#my ($out, $sid, $ino ) = @ARGV;
 
 	$ENV{'PATH'} = $ENV{'PATH'} . ":/usr/sbin:/sbin";
+	printf "LSR\n";
 	printf "PARAMS: (out, sid, ino) = ( %s, %s, %s)\n", $out, $sid, $ino ;
 	printf "ARGV: %s", join(" ", @ARGV);
 
@@ -161,9 +162,21 @@ sub list_sap_resources {
 	my $foundRes = 0; # found correct Resource
 
 	open CRMOUT, "$cmd_crm configure show 2>/dev/null |" || die "could not open crm output";
-	while (<CRMOUT>) {
-		chomp;
-		my $line = $_;
+	my $line;
+	while (defined($line = <CRMOUT>) ) {
+		#
+		# to handle line continuation ...
+		chomp $line;
+		if ($line =~ s/\\$//) {
+			$line .= <CRMOUT>;
+			redo unless eof(CRMOUT);
+		}
+		chomp $line;
+		printf ("DEBUG: ");
+		printf ("%s\n", $line);
+		#
+		# handle primitive records
+		#
 		if ( ($foundRes==0) && ( $line =~ /^primitive ([a-zA-Z0-9_]+) ([a-zA-Z0-9_]+):([a-zA-Z0-9_]+):([a-zA-Z0-9_]+)/ )) {
 			#
 			# 1. found begin of primitive definition and we did not already found the resource
@@ -172,40 +185,17 @@ sub list_sap_resources {
 			($fclass, $fprovider, $fra, $fname) = ($2, $3, $4, $1);
 			if (( $fclass eq $sclass ) && ( $fprovider eq $sprovider ) && ( $fra eq $sra ) ) {
 				#
-				# 2. we have found a primitive of the correct type
+				# 2. we have found a primitive of the correct type, lets look at the (ERS_)InstanceName
 				#
-				printf("rsc: %s\n", $_);
+				printf("DEBUG: rsc: %s\n", $line);
 				$found = 1;
-			} else {
-				$found = 0;
-			}
-		} elsif ( ($found==1) && ( $line =~ /^\s+params.*\s+($sparam)="([^"]+)"/ )) {
-			#
-			# 3. while we found a resource (primitive) of correct type we now could check the params
-			#
-			my ($paramName, $paramValue) = ($1, $2);
-			#
-			# InstanceName should look like <SID>_<TYPE><NUMBER>_<VIRTHOST>
-			#
-			if ($paramName =~ /InstanceName/) {
-				printf "PN=%s PV=%s\n", $paramName, $paramValue;
-			}
-			if ( $paramValue =~ /^${sid}_[a-zA-Z0-9]+${ino}_[a-zA-Z0-9_-]+$/ ) {
-				$foundRes=1;
-			} elsif ( ($found==1) && ( $line =~ /^\s+params.*\s+($sparam2)="([^"]+)"/ )) {
-				#
-				# 4. while we found a resource (primitive) of correct type we now could check the params 2
-				#
-				my ($paramName, $paramValue) = ($1, $2);
-				#
-				# InstanceName should look like <SID>_<TYPE><NUMBER>_<VIRTHOST>
-				#
-				if ($paramName =~ /ERS_InstanceName/) {
-					printf "PN=%s PV=%s\n", $paramName, $paramValue;
-				}
-				if ( $paramValue =~ /^${sid}_[a-zA-Z0-9]+${ino}_[a-zA-Z0-9_-]+$/ ) {
+				my $searchInst = "${sid}_[a-zA-Z0-9]+${ino}_[a-zA-Z0-9_-]+";
+				if (  $line =~ /(ERS_)?InstanceName="$searchInst"/ ) {
+					printf("DEBUG: Matching Resource with InstanceName found\n", $_);
 					$foundRes=1;
 				}
+			} else {
+				$found = 0;
 			}
 	        } elsif ( ($foundRes==1) && ( $line =~ /^(group|ms) ([a-zA-Z0-9_]+).*($fname)/ )) {
 			# 
