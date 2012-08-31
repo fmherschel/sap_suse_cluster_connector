@@ -192,7 +192,12 @@ sub list_sap_resources {
 				my $searchInst = "${sid}_[a-zA-Z0-9]+${ino}_[a-zA-Z0-9_-]+";
 				if (  $line =~ /(ERS_)?InstanceName="$searchInst"/ ) {
 					printf("DEBUG: Matching Resource with InstanceName found\n", $_);
-					$foundRes=1;
+					if (  $line =~ /is-managed="false"/ )  {
+						printf("DEBUG: Matching Resource with InstanceName  is unmanged (drop from output)");
+						$foundRes=0;
+					} else {
+						$foundRes=1;
+					}
 				}
 			} else {
 				$found = 0;
@@ -201,7 +206,12 @@ sub list_sap_resources {
 			# 
 			# found resource is member of a group
 			#
-			$fgname = $2;
+			if (  $line =~ /is-managed="false"/ )  {
+				printf("DEBUG: Matching Group with InstanceName  is unmanged (drop from output)");
+				$foundRes=0;
+			} else {
+				$fgname = $2;
+			}
 		}
 	}	
 
@@ -216,7 +226,9 @@ sub list_sap_resources {
 			close OUT;
 			$rc=0;
 		}
-	}
+	} else {
+			$rc=1;
+        }
 
 	# TODO: scores and node names sorted by scores -> use ptest
 	#
