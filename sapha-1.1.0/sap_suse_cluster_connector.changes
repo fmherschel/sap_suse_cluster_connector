@@ -1,5 +1,9 @@
+* Fri Aug 31 2012 - fabian.herschel@suse.com
+  bnc#777453 - sap_suse_cluster_conncetor might fail to scan resources
+  bnc#778273 - sap_suse_cluster_conncetor lsr reports unmanaged resources as clustered
+  bnc#778293 - sap_suse_cluster_conenctor - system log
 * Mon Jun 04 2012 - fabian.herschel@suse.com
-  bnc#763793:
+  bnc#763793 - SLES11-SP2 SAP: sap_suse_cluster_connector
   - source archive with compression
   - secured temp file
 * Tue Apr 03 2012 - fabian.herschel@suse.com
