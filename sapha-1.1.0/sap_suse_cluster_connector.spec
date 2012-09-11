@@ -16,7 +16,7 @@ License:      GPL
 Group:        Productivity/Clustering/HA
 Autoreqprov:  on
 Summary:      Connector between sapstartsrv and corosync/pacemeker based clusters
-Version:      0.1.1
+Version:      1.0.0
 Release:      12.1
 #Release:      16
 Source:       %{name}-%{version}.tgz
@@ -43,17 +43,15 @@ http://scn.sap.com/docs/DOC-25453
 # WRONG %setup -c -T -a 0
 # WRONG %setup -T -a 0
 %setup  
-pwd
-ls
-sleep 10
+#pwd #ls #sleep 10
 
 %build
 pwd
 ls
 ( cd man8; for mp in *8; do gzip $mp; done )
 ( cd bin; 
-  ln -s sap_suse_cluster_connector sap_ha_cluster_connector 
-  ln -s sap_suse_cluster_connector sap_cluster_connector 
+#  ln -s sap_suse_cluster_connector sap_ha_cluster_connector 
+#  ln -s sap_suse_cluster_connector sap_cluster_connector 
 )
 
 %clean
@@ -80,20 +78,19 @@ cp -va bin/* %{buildroot}/usr/bin/
 #
 cp -a man8/*.gz %{buildroot}/usr/share/man/man8/
 
-#%post
+%post
+if [ ! -e /usr/local/bin/sap_cluster_connector ]; then
+    ln -s /usr/bin/sap_suse_cluster_connector \
+	/usr/local/bin/sap_cluster_connector
+fi
+
 
 %files
 %defattr(-,root,root)
 /usr/bin/sap_suse_cluster_connector
-/usr/bin/sap_ha_cluster_connector
-/usr/bin/sap_cluster_connector
+#/usr/bin/sap_ha_cluster_connector
+#/usr/bin/sap_cluster_connector
 %doc /usr/share/man/man8/*.gz
 #%config(noreplace) /etc/ClusterTools2
 
-%changelog -n sap_suse_cluster_connector
-* Mon Jun 04 2012 - fabian.herschel@suse.com
-  BZ 763793:
-  - source archive with compression
-  - secured temp file
-* Wed Jan 25 2012 - fabian.herschel@suse.com
-  - initial package version
+#%changelog -n sap_suse_cluster_connector
