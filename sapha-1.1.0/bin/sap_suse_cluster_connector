@@ -27,6 +27,7 @@ use strict;
 use File::Temp qw/ tempfile tempdir /;
 
 my $DEBUG; my $filename;
+my $nowstring;
 #
 # init some environment 
 #
@@ -78,7 +79,28 @@ sub checkavail(@) {
 sub initial_check() {
 	my $rc=0;
 	my $check_cmd;
+	#
+	# move old log file to *.old in cwd which is /usr/sap/<SID>/<INST>/work
+	#
+	rename("$logident" . ".log", "$logident" . ".old");
+	#
+	# open new log file in cwd which is /usr/sap/<SID>/<INST>/work
+        #
+	#($DEBUG, $filename) = tempfile("sap_suse_cluster_conector.XXXXX", SUFFIX => '.log');
+	open($DEBUG, ">>$logident" . ".log");
+	*STDOUT=*$DEBUG;
+	printf "\n---------------------------------------------------\n";
+	printf "trc file: %s\n", $logident . ".log";
+	printf "---------------------------------------------------\n";
+	$nowstring = localtime;
+	printf "%s : init()\n", $nowstring;
 	for $check_cmd ( @all_cmds) {
+#		if ( -e "/usr/bin/$check_cmd" ) {
+#			printf "INFO: %s available", $check_cmd;
+#		} else {
+#			printf "ERR: Cluster command %s missing\n", $check_cmd;
+#			$rc=3;
+#		}
 	}
 	return $rc;
 }
@@ -86,6 +108,8 @@ sub initial_check() {
 sub fire_resource_action {
 	my ($rsc, $act, $nod) = @_;
 	my $rc=0;
+	$nowstring = localtime;
+	printf "%s : fra()\n", $nowstring;
 	if ( $act eq "stop" ) {
 		syslog("LOG_INFO", "fire_resource_action stop %s\n", $rsc);
 		if (system($cmd_crm,"resource",$act,$rsc)) { $rc=1; }
@@ -106,6 +130,8 @@ sub check_pending_action {
 	my ($res, $act, $sta) = @_;
 	my $rc=0;
 	my $found=0;
+	$nowstring = localtime;
+	printf "%s : cpa()\n", $nowstring;
 	#
 	# rc:
 	#     0: found
@@ -145,6 +171,8 @@ sub list_sap_resources {
 	#
 	my ($out, $sid, $ino) = @_;
 	my $rc=2;
+	$nowstring = localtime;
+	printf "%s : lsr()\n", $nowstring;
 	# TODO: implement action
 	#
 	# typical crm syntax/output:
@@ -263,6 +291,8 @@ sub list_sap_nodes {
 	#
 	my ($outfile, $resource) = @_;
 	my $rc=0;
+	$nowstring = localtime;
+	printf "%s : lsn()\n", $nowstring;
 	# TODO: check implemented action
 	###############################################################################################
 	###############################################################################################
@@ -382,12 +412,12 @@ if ( $cmd eq "h" || $cmd eq "help" ||  $cmd eq "--help" ) {
 	 usage();
 	 exit 0;
 }
-($DEBUG, $filename) = tempfile("sap_suse_cluster_conector.XXXXX", SUFFIX => '.log');
-*STDOUT=*$DEBUG;
 if  ($cmd eq "init")  {
 	syslog("LOG_INFO", "init call");
 	$return_code=initial_check();
 } elsif ( $cmd eq "cpa" ) {
+	open($DEBUG, ">>$logident" . ".log");
+	*STDOUT=*$DEBUG;
 	$result = GetOptions ("res=s" => \$res,    
 	                   "act=s" => \$act,
 		 ) &&
@@ -397,6 +427,8 @@ if  ($cmd eq "init")  {
 
 
  } elsif ( $cmd eq "lsr" ) {
+	open($DEBUG, ">>$logident" . ".log");
+	*STDOUT=*$DEBUG;
 	$result = GetOptions ("sid=s" => \$sid,    
 	                   "ino=s" => \$ino,
 	                   "out=s" => \$out,
@@ -407,6 +439,8 @@ if  ($cmd eq "init")  {
 	
 
  } elsif ( $cmd eq "fra" ) {
+	open($DEBUG, ">>$logident" . ".log");
+	*STDOUT=*$DEBUG;
 	 #
 	 # remark: don't check if nod is set - as it is optional
 	 #
@@ -419,6 +453,8 @@ if  ($cmd eq "init")  {
 	$return_code=fire_resource_action($res, $act, $nod);
 
  } elsif ( $cmd eq "lsn" ) {
+	open($DEBUG, ">>$logident" . ".log");
+	*STDOUT=*$DEBUG;
 	$result = GetOptions ("out=s" => \$out,    
 	                   "res=s" => \$res,
 		 ) &&
@@ -429,9 +465,13 @@ if  ($cmd eq "init")  {
 
 
  } else  {
+	open($DEBUG, ">>$logident" . ".log");
+	*STDOUT=*$DEBUG;
 	 #
 	 # remark: found no or unknown cmd
 	 #
+	$nowstring = localtime;
+	printf "%s : unkown function %s\n", $nowstring, $cmd;
  	paramproblem()
  }
 	
