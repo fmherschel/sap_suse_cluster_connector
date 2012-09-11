@@ -34,7 +34,7 @@ my $DEBUG; my $filename;
 my $cmd_crm = "crm";
 my $cmd_crm_resource = "crm_resource";
 my $cmd_ptest = "ptest";
-my $logident = "sap_suse_cluster_connetcor";
+my $logident = "sap_suse_cluster_connector";
 my $logoptions = "pid";
 my $logfacility = "LOG_USER";
 #
