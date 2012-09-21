@@ -108,8 +108,20 @@ sub initial_check() {
 sub fire_resource_action {
 	my ($rsc, $act, $nod) = @_;
 	my $rc=0;
+        my $sysconfig = "/etc/sysconfig/sap_suse_cluster_connector";
 	$nowstring = localtime;
-	printf "%s : fra()\n", $nowstring;
+	printf "%s : fra($rsc, $act, $nod)\n", $nowstring;
+	open SYSCONF, "<$sysconfig" or syslog("LOG_INFO", "open $sysconfig failed");
+	while (<SYSCONF>) {
+		chomp;
+		my $line = $_;
+		printf "%s...\n",  $line;
+		if ($line =~ /BLOCK_RESOURCES=.*$rsc/) {
+                   syslog("LOG_INFO", "BLOCK INFO: fra call %s for resource %s blocked as defined in %s", $act, $rsc, $sysconfig);
+		   return 0;
+		}
+        }
+	close SYSCONF;
 	if ( $act eq "stop" ) {
 		syslog("LOG_INFO", "fire_resource_action stop %s\n", $rsc);
 		if (system($cmd_crm,"resource",$act,$rsc)) { $rc=1; }
@@ -143,6 +155,7 @@ sub check_pending_action {
         # rsc_sap_NA1_ASCS00_sapna1as:0   (ocf::heartbeat:SAPInstance) Stopped : rsc_sap_NA1_ASCS00_sapna1as:0_monitor_0 (node=node0102, call=11, rc=7): complete
         # rsc_sap_NA1_ASCS00_sapna1as:0   (ocf::heartbeat:SAPInstance) Slave : rsc_sap_NA1_ASCS00_sapna1as:0_start_0 (node=node0101, call=-1, rc=14): pending
         # rsc_sap_NA1_ASCS00_sapna1as:0   (ocf::heartbeat:SAPInstance) Master : rsc_sap_NA1_ASCS00_sapna1as:0_demote_0 (node=node0101, call=-1, rc=14): pending
+        # rsc_sap_HA0_D02 (ocf::heartbeat:SAPInstance) Started  FAILED: rsc_sap_HA0_D02_start_0 (node=cl2n01, call=-1, rc=14): pending<---- FOUND!!
         #
 	#    crm_resource -O -r $rsc | grep "${rsc}_${act}_.*: ${sta}"  && rc=0
 	#open CRMOUT, "$cmd_crm_resource -O -r $res 2>/dev/null |" or $rc=2;
@@ -154,13 +167,45 @@ sub check_pending_action {
 		printf "%s", $line;
 		# if ( $line =~ /${res}_${act}_.*: ${sta}/ ) { # FH 2012-01-05: Changed to find also clones and master-slaves
 		#if ( $line =~ /${res}(:[0-9]+_|_)${act}_.*: ${sta}/ ) {
-		if ( $line =~ /${res}.*: ${sta}/ ) {
+		#if ( $line =~ /${res}.*: ${sta}/ ) {
+		my ${masteract};
+		if ( ${act} eq "stop" ) {
+			$masteract="demote";
+		} elsif ( ${act} eq "start" ) {
+                        $masteract="promote";
+                }
+		#if ( $line =~ /(${res}(:[0-9]+)?_(${act}|${masteract})_0.*: ${sta})/ ) {
+		if ( $line =~ /(${res}(:[0-9]+)?_(${act}|demote|promote)_0.*: ${sta})/ ) {
 			$rc=0;
-			syslog("LOG_INFO","Pending action for %s found", ${res});
+			syslog("LOG_INFO","Pending action %s for %s found", $1, ${res});
 			printf "<---- FOUND!!";
 		}
 		printf "\n";
 	}
+        close CRMOUT;
+	if ( $rc != 0 ) {
+           open CRMOUT, "$cmd_crm_resource --resource ${res} --get-parameter target-role --meta 2>/dev/null |" or $rc=2;
+           while (<CRMOUT>) {
+                chomp;
+                my $line = $_;
+                printf "%s", $line;
+		if ( (${act} eq "stop") && ( $line =~ "Stopped" )) {
+			$rc=0;
+			syslog("LOG_INFO","target-role stopped for resource %s found", ${res});
+		}
+		if ( (${act} eq "start") && ( $line =~ "Started" )) {
+			syslog("LOG_INFO","target-role started for resource %s found", ${res});
+			$rc=0;
+		}
+	   }
+        }
+	close CRMOUT;
+        #
+        #### BY_PASS_CODE
+        #if ( $rc != 0 ) { 
+	#	syslog("LOG_INFO","SENDING PENDING ACTION FOUND TO DEBUG");
+	#	$rc=0;
+        #}
 	printf "</--------- cpa ------>\n";
 	return $rc;
 }
