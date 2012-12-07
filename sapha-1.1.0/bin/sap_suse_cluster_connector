@@ -18,6 +18,7 @@
 #    TODO: long cmd names (like check_pending_action)
 #    TODO: Could we check for the record-pending option?
 #    TODO: database instances -> lsr --sid SID --dbhost HOST --dbtype TYPE
+#    TODO: all syslog messages also to developer trace log file
 #
 
 use Getopt::Long;
@@ -51,7 +52,7 @@ $0 cmd options
       where cmd could be:  
       help 
       init
-      cpa --res RES --act ACT --sta STA
+      cpa --res RES --act ACT 
       lsr --out FILE --sid SID --ino INO | --dbhost HOST --dbtype TYPE
       fra --res RES --act ACT  [ --nod NODE ]
       lsn --out FILE --res RES
@@ -59,7 +60,7 @@ $0 cmd options
 }
 
 sub paramproblem() {
-	syslog("LOG_ERR", called with wrong parameters);
+	syslog("LOG_ERR", "called with wrong parameters");
 	usage();
 	exit(2);
 }
@@ -106,12 +107,13 @@ sub initial_check() {
 }
 
 sub fire_resource_action {
-	my ($rsc, $act, $nod) = @_;
+	my ($rsc, $act, $nod) = ("", "", "");
+	($rsc, $act, $nod) = @_;
 	my $rc=0;
         my $sysconfig = "/etc/sysconfig/sap_suse_cluster_connector";
 	$nowstring = localtime;
 	printf "%s : fra($rsc, $act, $nod)\n", $nowstring;
-	open SYSCONF, "<$sysconfig" or syslog("LOG_INFO", "open $sysconfig failed");
+	open SYSCONF, "<$sysconfig" or syslog("LOG_INFO", "open %s failed", $sysconfig);
 	while (<SYSCONF>) {
 		chomp;
 		my $line = $_;
@@ -218,7 +220,8 @@ sub list_sap_resources {
 	my $rc=2;
 	$nowstring = localtime;
 	printf "%s : lsr()\n", $nowstring;
-	# TODO: implement action
+	#
+	# TODO: If a query for SID+InstNR returns multiple row  fire a error message (syslog and developer trace log)
 	#
 	# typical crm syntax/output:
 	# primitive rsc_SAPInstance_NA0_ASCS00_sapna0as ocf:heartbeat:SAPInstance \
@@ -451,6 +454,7 @@ my ($cmd) = @ARGV; shift;
 my $result=2;
 my ($sid, $ino, $act, $out, $res, $nod, $sta);
 my $return_code=2;
+$nod="";
 $ENV{'PATH'} = $ENV{'PATH'} . ":/usr/sbin:/sbin";
 
 if ( $cmd eq "h" || $cmd eq "help" ||  $cmd eq "--help" ) {
@@ -520,6 +524,7 @@ if  ($cmd eq "init")  {
  	paramproblem()
  }
 	
+ syslog("LOG_INFO", "TEST END");
 closelog();
 exit $return_code;
 #
