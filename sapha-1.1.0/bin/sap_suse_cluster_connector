@@ -40,6 +40,9 @@ my $logident = "sap_suse_cluster_connector";
 my $logoptions = "pid";
 my $logfacility = "LOG_USER";
 my $protocolVersion=1;
+my $haProd="SLE 12 HAE";
+my $haProdSAP="sap_suse_cluster_connector";
+my $haProdDoc="https://www.suse.com/products/sles-for-sap/resource-library/sap-best-practices.html";
 #
 # open syslog
 #
@@ -55,6 +58,7 @@ $0 cmd options
       init
       cpa --res RES --act ACT --sta STA
       fra --res RES --act ACT  [ --nod NODE ]
+      gvi --out FILE
       lsr --out FILE --sid SID --ino INO | --dbhost HOST --dbtype TYPE
       lsn --out FILE --res RES
 ";
@@ -435,6 +439,27 @@ sub list_sap_nodes {
 	return $rc;
 }
 
+sub get_version_info($)
+{
+    my ($outfile, $resource) = @_;
+    my $rc=0;
+    $nowstring = localtime;
+    printf "%s : gvi()\n", $nowstring;
+    if ( $outfile ne "" ) {
+        #HASCRIPTCO-VERS
+        #HAPROD
+        #HAPROD-SAP
+        #HAPROD-DOC
+	open OUTFILE, ">$outfile";
+	syslog("LOG_INFO", "gvi result: %s\n%s\n%s\n%s\n",  $protocolVersion, $haProd, $haProdSAP, $haProdDoc);
+	printf OUTFILE "%s\n%s\n%s\n%s\n",  $protocolVersion, $haProd, $haProdSAP, $haProdDoc;
+	close OUTFILE;
+    } else {
+	printf "%s\n%s\n%s\n%s\n",  $protocolVersion, $haProd, $haProdSAP, $haProdDoc;
+    }
+    return $rc;
+}
+
 #
 # "main"
 #
@@ -495,9 +520,16 @@ if  ($cmd eq "init")  {
 	                   "res=s" => \$res,
 		 ) &&
 	checkavail(($res, $out)) || paramproblem();
-	# TODO: action
 	syslog("LOG_INFO", "lsn call (out=%s,res=%s)", $out, $res);
 	$return_code=list_sap_nodes($out, $res);
+ } elsif ( $cmd eq "gvi" ) {
+	open($DEBUG, ">>$logident" . ".log");
+	*STDOUT=*$DEBUG;
+	$result = GetOptions ("out=s" => \$out,
+		 ) &&
+	checkavail(($out)) || paramproblem();
+	syslog("LOG_INFO", "lsn call (out=%s,res=%s)", $out, $res);
+	$return_code=get_version_info($out);
  } else  {
 	open($DEBUG, ">>$logident" . ".log");
 	*STDOUT=*$DEBUG;
