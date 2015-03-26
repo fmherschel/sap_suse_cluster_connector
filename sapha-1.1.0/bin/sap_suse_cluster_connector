@@ -4,7 +4,8 @@
 # sap_suse_cluster_connector
 #
 # Author:  fabian.herschel@suse.com
-# (c) 2010 SUSE Linux Products GmbH, Nuremberg, Germany
+# (c) 2010-2014 SUSE Linux Products GmbH, Nuremberg, Germany
+# (c) 2015      SUSE Linux GmbH, Nuremberg, Germany
 # License: GPLv2 or later
 #
 ############################################################################
@@ -18,7 +19,6 @@
 #    TODO: long cmd names (like check_pending_action)
 #    TODO: Could we check for the record-pending option?
 #    TODO: database instances -> lsr --sid SID --dbhost HOST --dbtype TYPE
-#    TODO: all syslog messages also to developer trace log file
 #
 
 use Getopt::Long;
@@ -39,6 +39,7 @@ my $cmd_ptest = "ptest";
 my $logident = "sap_suse_cluster_connector";
 my $logoptions = "pid";
 my $logfacility = "LOG_USER";
+my $protocolVersion=1;
 #
 # open syslog
 #
@@ -52,9 +53,9 @@ $0 cmd options
       where cmd could be:  
       help 
       init
-      cpa --res RES --act ACT 
-      lsr --out FILE --sid SID --ino INO | --dbhost HOST --dbtype TYPE
+      cpa --res RES --act ACT --sta STA
       fra --res RES --act ACT  [ --nod NODE ]
+      lsr --out FILE --sid SID --ino INO | --dbhost HOST --dbtype TYPE
       lsn --out FILE --res RES
 ";
 }
@@ -107,13 +108,12 @@ sub initial_check() {
 }
 
 sub fire_resource_action {
-	my ($rsc, $act, $nod) = ("", "", "");
-	($rsc, $act, $nod) = @_;
+	my ($rsc, $act, $nod) = @_;
 	my $rc=0;
         my $sysconfig = "/etc/sysconfig/sap_suse_cluster_connector";
 	$nowstring = localtime;
 	printf "%s : fra($rsc, $act, $nod)\n", $nowstring;
-	open SYSCONF, "<$sysconfig" or syslog("LOG_INFO", "open %s failed", $sysconfig);
+	open SYSCONF, "<$sysconfig" or syslog("LOG_INFO", "open %s failed", $sysconfig );
 	while (<SYSCONF>) {
 		chomp;
 		my $line = $_;
@@ -143,7 +143,6 @@ sub fire_resource_action {
 sub check_pending_action {
 	my ($res, $act, $sta) = @_;
 	my $rc=0;
-	my $found=0;
 	$nowstring = localtime;
 	printf "%s : cpa()\n", $nowstring;
 	#
@@ -220,8 +219,8 @@ sub list_sap_resources {
 	my $rc=2;
 	$nowstring = localtime;
 	printf "%s : lsr()\n", $nowstring;
-	#
-	# TODO: If a query for SID+InstNR returns multiple row  fire a error message (syslog and developer trace log)
+	printf "%s : lsr($out, $sid, $ino)\n", $nowstring;
+	# TODO: implement action
 	#
 	# typical crm syntax/output:
 	# primitive rsc_SAPInstance_NA0_ASCS00_sapna0as ocf:heartbeat:SAPInstance \
@@ -243,8 +242,7 @@ sub list_sap_resources {
 	#printf "PARAMS: (out, sid, ino) = ( %s, %s, %s)\n", $out, $sid, $ino ;
 	#printf "ARGV: %s", join(" ", @ARGV);
 
-	my ($fclass, $fprovider, $fra, $fname, $fgname) = ("","","","","");
-	my $found = 0;     # found a primitive matching criteria
+	my ($fra, $fname, $fgname) = ("","","","","");
 	my $foundRes = 0; # found correct Resource
 
 	open CRMOUT, "$cmd_crm configure show 2>/dev/null |" || die "could not open crm output";
@@ -262,32 +260,27 @@ sub list_sap_resources {
 		#
 		# handle primitive records
 		#
-		if ( ($foundRes==0) && ( $line =~ /^primitive ([a-zA-Z0-9_]+) ([a-zA-Z0-9_]+):([a-zA-Z0-9_]+):([a-zA-Z0-9_]+)/ )) {
+		if ( ($foundRes==0) && ( $line =~ /^primitive ([a-zA-Z0-9_]+) ($sclass:$sprovider:|)($sra)/ )) {
 			#
 			# 1. found begin of primitive definition and we did not already found the resource
 			#   -> catch resource-name, resource-class, resource-provider, resource-agent
+			# 2. we have found a primitive of the correct type, lets look at the (ERS_)InstanceName
 			#
-			($fclass, $fprovider, $fra, $fname) = ($2, $3, $4, $1);
-			if (( $fclass eq $sclass ) && ( $fprovider eq $sprovider ) && ( $fra eq $sra ) ) {
-				#
-				# 2. we have found a primitive of the correct type, lets look at the (ERS_)InstanceName
-				#
-				#syslog("LOG_DEBUG","rsc: %s\n", $line);
-				$found = 1;
-				my $searchInst = "${sid}_[a-zA-Z0-9]+${ino}_[a-zA-Z0-9_-]+";
-				if (  $line =~ /(ERS_)?InstanceName="($searchInst)"/ ) {
-                                        my $isERS=$1;
-					my $finstance=$2;
-					syslog("LOG_DEBUG","Resource %s with %sInstanceName=%s found\n", $fname, $isERS, $finstance);
-					if (  $line =~ /is-managed="false"/ )  {
-						syslog("LOG_DEBUG","Resource %s is unmanged - ignore for sapstartsrv lsr call", $fname, $searchInst);
-						$foundRes=0;
-					} else {
-						$foundRes=1;
-					}
+			($fra, $fname) = ($3, $1);
+			#
+			#
+			#syslog("LOG_DEBUG","rsc: %s\n", $line);
+			my $searchInst = "${sid}_[a-zA-Z0-9]+${ino}_[a-zA-Z0-9_-]+";
+			if (  $line =~ /(ERS_)?InstanceName="?($searchInst)"?/ ) {
+				my $isERS=$1;
+				my $finstance=$2;
+				syslog("LOG_DEBUG","Resource %s with %sInstanceName=%s found\n", $fname, $isERS, $finstance);
+				if (  $line =~ /is-managed="false"/ )  {
+					syslog("LOG_DEBUG","Resource %s is unmanged - ignore for sapstartsrv lsr call", $fname, $searchInst);
+					$foundRes=0;
+				} else {
+					$foundRes=1;
 				}
-			} else {
-				$found = 0;
 			}
 	        } elsif ( ($foundRes==1) && ( $line =~ /^(group|ms) ([a-zA-Z0-9_]+).*($fname)/ )) {
 			# 
@@ -342,10 +335,6 @@ sub list_sap_nodes {
 	$nowstring = localtime;
 	printf "%s : lsn()\n", $nowstring;
 	# TODO: check implemented action
-	###############################################################################################
-	###############################################################################################
-	###############################################################################################
-	###############################################################################################
 	###############################################################################################
 	#
 	# 1. GET HOSTNAME WHERE FUNCTION WAS CALLED
@@ -446,7 +435,6 @@ sub list_sap_nodes {
 	return $rc;
 }
 
-
 #
 # "main"
 #
@@ -454,7 +442,6 @@ my ($cmd) = @ARGV; shift;
 my $result=2;
 my ($sid, $ino, $act, $out, $res, $nod, $sta);
 my $return_code=2;
-$nod="";
 $ENV{'PATH'} = $ENV{'PATH'} . ":/usr/sbin:/sbin";
 
 if ( $cmd eq "h" || $cmd eq "help" ||  $cmd eq "--help" ) {
@@ -511,8 +498,6 @@ if  ($cmd eq "init")  {
 	# TODO: action
 	syslog("LOG_INFO", "lsn call (out=%s,res=%s)", $out, $res);
 	$return_code=list_sap_nodes($out, $res);
-
-
  } else  {
 	open($DEBUG, ">>$logident" . ".log");
 	*STDOUT=*$DEBUG;
@@ -524,7 +509,6 @@ if  ($cmd eq "init")  {
  	paramproblem()
  }
 	
- syslog("LOG_INFO", "TEST END");
 closelog();
 exit $return_code;
 #
